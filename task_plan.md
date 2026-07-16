@@ -57,7 +57,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   reveals the overview text. — done when: a browser test toggles it and asserts the overview
   text appears, then hides.
 
-- [ ] **Touch swipe gestures** wired to actions: right→`watchlater`, up→`watched`,
+- [x] **Touch swipe gestures** wired to actions: right→`watchlater`, up→`watched`,
   left→`skip`. — done when: a browser test simulating each swipe direction fires the matching
   action callback with the correct action name.
 

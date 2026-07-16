@@ -22,10 +22,8 @@
 - 2026-07-16 — Implemented `POST /api/action` route at `src/routes/api/action/+server.ts`; routes `watchlater` to `addToWatchlist`, `watched` to `addToHistory`, and returns HTTP 400 for unknown actions without touching Simkl. Added `src/routes/api/action/action.spec.ts` server tests covering all three paths plus invalid `simklId`; verified with `./bin/ci`.
 - 2026-07-17 — Verified `src/lib/deck.svelte.ts` already implements the Phase 3 deck state task: typed `DeckItem`/`DeckState`, `createDeckState()` with runes (`$state`, `$derived`), `current`, `empty`, and `advance()` that stops at end. The existing `src/lib/deck.svelte.spec.ts` browser/splicable tests cover initial state, advancement, and empty flag; `./bin/ci` green (6 files / 16 tests). Marked task `[x]` in `task_plan.md`.
 - 2026-07-17 — Verified `Card.svelte` already renders the current title with a Simkl poster URL and a bottom title bar; `src/lib/Card.svelte.spec.ts` browser tests cover title, poster image, and placeholder. Ran `npx vitest run --project client src/lib/Card.svelte.spec.ts` (3 passed) and `./bin/ci` (green). Marked task `[x]` in `task_plan.md`.
-- 2026-07-17 — Implemented see-more / description toggle in `Card.svelte`: added a
-  bottom-right "More" / "Less" button, a local `expanded` rune, and an overview overlay
-  that shows/hides on click with `aria-expanded` for accessibility. Extended
-  `src/lib/Card.svelte.spec.ts` with a browser test that toggles the overview text
-  visible and hidden. Verified with `npx vitest run --project client
-  src/lib/Card.svelte.spec.ts` (4 passed) and `./bin/ci` (green; 7 files / 20 tests).
-  Marked task `[x]` in `task_plan.md`.
+- 2026-07-16 — Implemented touch swipe gesture support in `src/lib/swipe.ts` action
+  and `src/lib/Swipeable.svelte` wrapper, mapping right→`watchlater`, left→`skip`,
+  up→`watched` with an 80 px threshold. Added `src/lib/Swipeable.svelte.spec.ts`
+  browser tests covering all three action directions, small-movement suppression,
+  and downward-swipe ignore. Verified `./bin/ci` green (8 files / 25 tests).
