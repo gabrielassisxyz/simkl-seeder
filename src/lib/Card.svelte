@@ -3,10 +3,12 @@
 
 	interface Props {
 		item: DeckItem;
+		expanded?: boolean;
 	}
 
-	let { item }: Props = $props();
-	let expanded = $state(false);
+	// `expanded` is bindable so the page can also drive see-more from a hotkey,
+	// while the in-card button keeps working on its own.
+	let { item, expanded = $bindable(false) }: Props = $props();
 
 	function posterUrl(poster?: string): string | undefined {
 		if (!poster) return undefined;
