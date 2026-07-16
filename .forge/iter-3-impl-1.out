@@ -1,0 +1,18 @@
+Implemented **Phase 1, task 3**: `src/lib/server/simkl.ts` with injected `fetch` and config.
+
+What changed:
+- Added `src/lib/server/simkl.ts`:
+  - `createSimklClient({ fetch, config })` exposing `discover()`, `addToWatchlist(simklId)`, `addToHistory(simklId)`.
+  - Both auth headers sent on every call: `simkl-api-key` and `Authorization: Bearer`.
+  - Discover hits `GET /movies/trending`.
+  - Writes POST to `/sync/add-to-list` and `/sync/history` with `ids.simkl` (not `simkl_id`).
+  - `SimklApiError` on non-OK responses; `simklFromEnv()` factory for route use.
+- Added `src/lib/server/simkl.spec.ts` with node tests covering URL, method, headers, and write-body shape for each method.
+
+Verification:
+- `npx vitest run --project server src/lib/server/simkl.spec.ts` → 4 passed.
+- `./bin/ci` → green (lint, types, all tests).
+
+Updated:
+- `task_plan.md`: marked the Simkl server client task `[x]`.
+- `progress.md`: appended the completion line.

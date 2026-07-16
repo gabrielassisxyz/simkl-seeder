@@ -23,7 +23,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   set and throws a clear, named error when `SIMKL_CLIENT_ID` or `SIMKL_ACCESS_TOKEN` is
   missing.
 
-- [ ] **Simkl server client `src/lib/server/simkl.ts`** with `discover()`,
+- [x] **Simkl server client `src/lib/server/simkl.ts`** with `discover()`,
   `addToWatchlist(simklId)`, `addToHistory(simklId)`; `fetch` injected as a dependency; sends
   `simkl-api-key: <client_id>` + `Authorization: Bearer <token>` headers. — done when: node
   tests with a mock fetch assert each method hits the right URL/method, sends both headers,

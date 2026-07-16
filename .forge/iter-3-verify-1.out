@@ -1,0 +1,9 @@
+All checks pass. Summary of the review of the task **"Simkl server client `src/lib/server/simkl.ts`"** (the `[x]` task):
+
+1. **Does the task** — ✓ `discover()`, `addToWatchlist(simklId)`, `addToHistory(simklId)` all present; `fetch` injected via `SimklClientOptions`; both `simkl-api-key` and `Authorization: Bearer` headers sent on every call.
+2. **No stubs/fakes** — real `fetch` calls, real error handling (`SimklApiError` on non-OK), no TODOs or hardcoded success.
+3. **Tests** — 4 tests pass; they assert URL, method, both headers, and critically the write bodies use `ids.simkl` (a `simkl_id` regression would fail the `toEqual` body assertion). The done-when is genuinely exercised.
+4. **AGENTS.md** — `discover()` targets `/movies/trending` per Phase-1 task 1's verified source (not the older `/search/movie`); writes use `ids.simkl` matching the documented search/write asymmetry; `check`, `prettier`, `eslint` all green.
+5. **Scope** — the only extra is `simklFromEnv`, a trivial 3-line factory wiring `simklConfig()` + `createSimklClient`; slightly ahead of need but a defensible seam for the Phase-2 routes, not a fake and not harmful.
+
+##ACCEPT##

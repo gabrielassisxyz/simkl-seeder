@@ -14,4 +14,8 @@
   --project server src/lib/server/env.spec.ts`.
 - 2026-07-15 — Fixed Prettier formatting in `src/lib/server/env.ts` (reviewer-rejected
   lint failure). Ran `./bin/ci`; green.
+- 2026-07-15 — Added `src/lib/server/simkl.ts` typed client factory `createSimklClient()` with
+  `discover()`, `addToWatchlist()`, and `addToHistory()`; `fetch` + config injected. Added
+  `src/lib/server/simkl.spec.ts` node tests asserting trending URL, headers, write bodies using
+  `ids.simkl`, and SimklApiError on non-OK response; verified with `./bin/ci`.
 

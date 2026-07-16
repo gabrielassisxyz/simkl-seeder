@@ -62,3 +62,35 @@ All checks pass. Here's my assessment against the review checklist:
 Minor note (not a defect): using `!clientId` treats an empty-string value as missing too — stricter than "missing" but correct and safer.
 
 ##ACCEPT##
+[00:02:33]   task accepted + committed
+[00:02:33] === iteration 3 — 10 task(s) left ===
+[00:02:33]   implement (attempt 1/3)
+Implemented **Phase 1, task 3**: `src/lib/server/simkl.ts` with injected `fetch` and config.
+
+What changed:
+- Added `src/lib/server/simkl.ts`:
+  - `createSimklClient({ fetch, config })` exposing `discover()`, `addToWatchlist(simklId)`, `addToHistory(simklId)`.
+  - Both auth headers sent on every call: `simkl-api-key` and `Authorization: Bearer`.
+  - Discover hits `GET /movies/trending`.
+  - Writes POST to `/sync/add-to-list` and `/sync/history` with `ids.simkl` (not `simkl_id`).
+  - `SimklApiError` on non-OK responses; `simklFromEnv()` factory for route use.
+- Added `src/lib/server/simkl.spec.ts` with node tests covering URL, method, headers, and write-body shape for each method.
+
+Verification:
+- `npx vitest run --project server src/lib/server/simkl.spec.ts` → 4 passed.
+- `./bin/ci` → green (lint, types, all tests).
+
+Updated:
+- `task_plan.md`: marked the Simkl server client task `[x]`.
+- `progress.md`: appended the completion line.
+[00:04:04]   bin/ci
+[00:04:15]   verify
+All checks pass. Summary of the review of the task **"Simkl server client `src/lib/server/simkl.ts`"** (the `[x]` task):
+
+1. **Does the task** — ✓ `discover()`, `addToWatchlist(simklId)`, `addToHistory(simklId)` all present; `fetch` injected via `SimklClientOptions`; both `simkl-api-key` and `Authorization: Bearer` headers sent on every call.
+2. **No stubs/fakes** — real `fetch` calls, real error handling (`SimklApiError` on non-OK), no TODOs or hardcoded success.
+3. **Tests** — 4 tests pass; they assert URL, method, both headers, and critically the write bodies use `ids.simkl` (a `simkl_id` regression would fail the `toEqual` body assertion). The done-when is genuinely exercised.
+4. **AGENTS.md** — `discover()` targets `/movies/trending` per Phase-1 task 1's verified source (not the older `/search/movie`); writes use `ids.simkl` matching the documented search/write asymmetry; `check`, `prettier`, `eslint` all green.
+5. **Scope** — the only extra is `simklFromEnv`, a trivial 3-line factory wiring `simklConfig()` + `createSimklClient`; slightly ahead of need but a defensible seam for the Phase-2 routes, not a fake and not harmful.
+
+##ACCEPT##
