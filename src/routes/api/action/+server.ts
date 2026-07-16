@@ -1,4 +1,5 @@
 import { json, error } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import { createSimklClient } from '$lib/server/simkl';
 import { simklConfig } from '$lib/server/env';
 import type { RequestEvent } from './$types';
@@ -16,8 +17,9 @@ export interface ActionResult {
 }
 
 export async function POST(event: RequestEvent): Promise<Response> {
-	const client =
-		event.locals.simklClient ?? createSimklClient({ fetch: event.fetch, config: simklConfig() });
+	// Global `fetch`, not event.fetch — see the deck route: event.fetch's injected
+	// Origin header makes Simkl degrade responses. Keep all Simkl calls uniform.
+	const client = event.locals.simklClient ?? createSimklClient({ fetch, config: simklConfig(env) });
 
 	const body = (await event.request.json()) as ActionBody;
 	const simklId = body.simklId;
