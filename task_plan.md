@@ -45,7 +45,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
 
 ## Phase 3 — Client deck UI
 
-- [ ] **Deck state `src/lib/deck.svelte.ts`** (runes): fetch `/api/deck` once, expose
+- [x] **Deck state `src/lib/deck.svelte.ts`** (runes): fetch `/api/deck` once, expose
   `current`, `advance()`, and an `empty` flag. — done when: a test seeds a queue and asserts
   `advance()` moves to the next item and flips `empty` when the queue is exhausted.
 
