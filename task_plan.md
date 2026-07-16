@@ -49,7 +49,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   `current`, `advance()`, and an `empty` flag. — done when: a test seeds a queue and asserts
   `advance()` moves to the next item and flips `empty` when the queue is exhausted.
 
-- [ ] **`Card.svelte`** — renders the current title (poster if present) with the title
+- [x] **`Card.svelte`** — renders the current title (poster if present) with the title
   visible at the bottom of the card. — done when: a browser test renders the component with a
   title prop and asserts the title text is on screen.
 
