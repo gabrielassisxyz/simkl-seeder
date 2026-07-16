@@ -27,6 +27,8 @@ Anti-goal: NOT a full Simkl client, NOT two-way sync, NOT a background daemon.
 - `./bin/install-hooks` — activate the gitleaks pre-commit hook (run once per clone).
 - `./scripts/simkl-login.sh` — one-time PIN login → access_token (reads `SIMKL_CLIENT_ID`
   from `.env`; inline `SIMKL_CLIENT_ID=… ./scripts/simkl-login.sh` still overrides).
+- `./scripts/simkl-smoke.sh [--write]` — end-to-end API check with your `.env` creds;
+  `--write` adds one title to your real Simkl plantowatch list.
 
 ## Deterministic gates (never skip)
 
@@ -40,9 +42,14 @@ Anti-goal: NOT a full Simkl client, NOT two-way sync, NOT a background daemon.
   (PIN flow, obtained once) in `.env`. Never commit them.
 - Route every Simkl call through a SvelteKit **server route** (a proxy): sidesteps CORS and
   keeps the token server-side. Do not call Simkl directly from the browser.
-- Endpoints: `GET /search/{type}` (discover), `POST /sync/add-to-list` (plantowatch =
-  watch-later), `POST /sync/history` (watched). Headers: `client_id` API key +
+- **Verified live** (`./scripts/simkl-smoke.sh`) — base host `https://api.simkl.com`; API
+  key goes in the `simkl-api-key: <client_id>` header, the user token in
   `Authorization: Bearer <access_token>`.
+  - Discover: `GET /search/movie?q=…&limit=…` → array; ids under `ids.simkl_id`.
+  - Watch-later: `POST /sync/add-to-list`, body `{movies:[{to:"plantowatch",ids:{simkl:ID}}]}`
+    → 201 with `added`/`not_found`. Watched: `POST /sync/history`.
+  - Verify a list: `GET /sync/all-items/movies/plantowatch`.
+  - **Asymmetry to remember:** search RETURNS `ids.simkl_id`, but writes WANT `ids.simkl`.
 - **RATE LIMIT ~1000 requests/day — load-bearing.** Fetch MANY titles per request
   (paginated bulk discovery); never one request per swipe.
 - **Local title DB (planned):** populate a local store of already-seen titles so the swipe
