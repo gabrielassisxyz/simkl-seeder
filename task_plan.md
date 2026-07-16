@@ -37,7 +37,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   test invokes the handler with a stubbed client and gets the normalized array back; the
   response never contains the token or client_id.
 
-- [ ] **`POST /api/action` route** (`src/routes/api/action/+server.ts`), body
+- [x] **`POST /api/action` route** (`src/routes/api/action/+server.ts`), body
   `{ simklId, action }` where `action ∈ {'watchlater','watched'}` → routes to
   `addToWatchlist` / `addToHistory`. — done when: a node test asserts `watchlater` calls
   add-to-list, `watched` calls history, and an unknown/`skip` action returns HTTP 400 without

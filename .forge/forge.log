@@ -117,3 +117,32 @@ All checks pass. Here's my assessment.
 5. **Scope** — The `app.d.ts` `Locals.simklClient?` addition is a minimal DI seam the route uses (`event.locals.simklClient ?? createSimklClient(...)`) and the test exercises it; not creep. `progress.md` / `task_plan.md` are expected forge bookkeeping.
 
 ##ACCEPT##
+[00:09:52]   task accepted + committed
+[00:09:52] === iteration 5 — 8 task(s) left ===
+[00:09:52]   implement (attempt 1/3)
+Implemented the `POST /api/action` route.
+
+What changed:
+- Added `src/routes/api/action/+server.ts` — accepts `{ simklId, action }`, routes `watchlater` to `addToWatchlist` and `watched` to `addToHistory`. Unknown actions (including `skip`) and invalid `simklId` return HTTP 400 without touching Simkl.
+- Added `src/routes/api/action/action.spec.ts` — server tests cover the two success paths and two 400 paths (unknown action, invalid simklId), verifying no write happens.
+
+Verification:
+- `./bin/ci` green (lint, types, tests, audit low-only).
+- Marked the task `[x]` in `task_plan.md` and appended a line to `progress.md`.
+
+Branch: `feature/api-action-route` pushed to origin from worktree `/home/gabriel/repositories/simkl-seeder-action-route`. PR ready at https://github.com/gabrielassisxyz/simkl-seeder/pull/new/feature/api-action-route.
+[00:13:27]   bin/ci
+[00:13:36]   verify
+All checks pass. Here's my assessment.
+
+**Task under review:** `POST /api/action` route — body `{ simklId, action }`, `watchlater`→`addToWatchlist`, `watched`→`addToHistory`, unknown/`skip`→HTTP 400 with no Simkl write.
+
+The implementation lives in worktree `/home/gabriel/repositories/simkl-seeder-action-route` on branch `feature/api-action-route` (this master tree only carries the forge bookkeeping diff).
+
+1. **Does it do the task?** Yes, fully. `src/routes/api/action/+server.ts` routes `watchlater`→`addToWatchlist(simklId)`, `watched`→`addToHistory(simklId)`, and returns `error(400,…)` for both unknown actions (incl. `skip`) and invalid `simklId` — reaching neither write.
+2. **Placeholders/stubs.** None. No TODO, no faked returns.
+3. **Tests.** `action.spec.ts` has 4 node tests covering both success paths (asserting the right client method is called with the right id) and both 400 paths (asserting `written === false`). They exercise a new route that didn't exist, so they'd fail without the change. Ran them: **4 passed**.
+4. **AGENTS.md.** Conforms — Simkl calls stay behind the server proxy (token server-side), reuses the established DI seam (`event.locals.simklClient ?? createSimklClient(...)`) matching the deck route and `app.d.ts`, method signatures match `simkl.ts`, conventional commit `feat(api): …`, work done in its own worktree/branch. Lint clean, `svelte-check` 0 errors.
+5. **Scope.** Only the two intended files added; `progress.md` / `task_plan.md` / `forge.log` are expected forge bookkeeping. No unrelated edits.
+
+##ACCEPT##

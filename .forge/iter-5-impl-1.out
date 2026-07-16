@@ -1,0 +1,11 @@
+Implemented the `POST /api/action` route.
+
+What changed:
+- Added `src/routes/api/action/+server.ts` — accepts `{ simklId, action }`, routes `watchlater` to `addToWatchlist` and `watched` to `addToHistory`. Unknown actions (including `skip`) and invalid `simklId` return HTTP 400 without touching Simkl.
+- Added `src/routes/api/action/action.spec.ts` — server tests cover the two success paths and two 400 paths (unknown action, invalid simklId), verifying no write happens.
+
+Verification:
+- `./bin/ci` green (lint, types, tests, audit low-only).
+- Marked the task `[x]` in `task_plan.md` and appended a line to `progress.md`.
+
+Branch: `feature/api-action-route` pushed to origin from worktree `/home/gabriel/repositories/simkl-seeder-action-route`. PR ready at https://github.com/gabrielassisxyz/simkl-seeder/pull/new/feature/api-action-route.
