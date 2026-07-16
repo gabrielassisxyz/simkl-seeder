@@ -56,3 +56,20 @@
   `simklConfig(env?)` and `SimklEnvError`. Missing `SIMKL_CLIENT_ID` or
   `SIMKL_ACCESS_TOKEN` throws a named error; `SIMKL_API_BASE` defaults to
   `https://api.simkl.com`.
+- **`.env` reaches the server routes via `$env/dynamic/private` (2026-07-16).** Vite does
+  NOT copy `.env` into `process.env`, so `simklConfig()`'s `process.env` default is empty in
+  the running app. Fix: the server routes import `{ env } from '$env/dynamic/private'` and
+  call `simklConfig(env)` — that module loads `.env` in dev and reads the process env in
+  prod. `simklConfig` stays pure (default `process.env`) so node tests are unchanged.
+- **Use global `fetch`, NOT `event.fetch`, for Simkl calls (2026-07-16, load-bearing).**
+  SvelteKit's `event.fetch` injects `Origin: http://localhost:5173` + `Sec-Fetch-Mode: cors`
+  when it proxies to a third party. Simkl's `GET /movies/trending` then returns a **degraded
+  payload with no `title`/`overview`** (only `ids`, `poster`, ratings). A plain server-to-
+  server `fetch` sends no `Origin` and gets the full records. Both `/api/*` routes now inject
+  the global `fetch`. This was latent because the route tests inject `event.locals.simklClient`
+  and never hit the real fetch.
+- **v1 done-check PASSED end-to-end (2026-07-16).** `./bin/ci` green (37 tests). Against the
+  live API via `npm run dev`: `/api/deck` returned 50 titles with overviews and no credential
+  leak; `POST /api/action` `watchlater`→200 and `watched`→200, `skip`→400 (no write). Both
+  writes confirmed present in the real Simkl account: *Chamber of Secrets* (`54114`) in
+  `plantowatch`, *Philosopher's Stone* (`54112`) in `completed`.

@@ -57,23 +57,23 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   reveals the overview text. — done when: a browser test toggles it and asserts the overview
   text appears, then hides.
 
-- [ ] **Touch swipe gestures** wired to actions: right→`watchlater`, up→`watched`,
+- [x] **Touch swipe gestures** wired to actions: right→`watchlater`, up→`watched`,
   left→`skip`. — done when: a browser test simulating each swipe direction fires the matching
   action callback with the correct action name.
 
-- [ ] **Keyboard hotkeys** mapped to the same three actions + see-more (hardcoded default
+- [x] **Keyboard hotkeys** mapped to the same three actions + see-more (hardcoded default
   bindings). — done when: a browser test dispatching each keydown fires the matching action
   callback.
 
 ## Phase 4 — Wiring + done-check
 
-- [ ] **Wire the page** (`src/routes/+page.svelte`): mount deck + Card + touch + hotkeys;
+- [x] **Wire the page** (`src/routes/+page.svelte`): mount deck + Card + touch + hotkeys;
   on `watchlater`/`watched` POST `/api/action` then `advance()`; on `skip` just `advance()`;
   show the empty state when the deck runs out. — done when: a browser test asserts a
   right-swipe POSTs `{action:'watchlater'}` then advances, and a left-swipe advances WITHOUT
   any network call.
 
-- [ ] **Full-gate + manual done-check.** — done when: `./bin/ci` is green AND, running
+- [x] **Full-gate + manual done-check.** — done when: `./bin/ci` is green AND, running
   `npm run dev`, performing watch-later + watched + skip + see-more against the real API, the
   two writes are confirmed present in the real Simkl account (via the app or
   `./scripts/simkl-smoke.sh` read); the result is recorded in `findings.md`.
