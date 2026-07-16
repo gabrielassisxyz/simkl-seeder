@@ -3,7 +3,9 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			simklClient?: ReturnType<(typeof import('./lib/server/simkl'))['createSimklClient']>;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}

@@ -94,3 +94,26 @@ All checks pass. Summary of the review of the task **"Simkl server client `src/l
 5. **Scope** — the only extra is `simklFromEnv`, a trivial 3-line factory wiring `simklConfig()` + `createSimklClient`; slightly ahead of need but a defensible seam for the Phase-2 routes, not a fake and not harmful.
 
 ##ACCEPT##
+[00:05:24]   task accepted + committed
+[00:05:24] === iteration 4 — 9 task(s) left ===
+[00:05:24]   implement (attempt 1/3)
+Implemented the first pending task: `GET /api/deck`.
+
+- Added `src/routes/api/deck/+server.ts` that calls `discover()`, normalizes the response to `{ simklId, title, poster?, overview? }`, and returns it as JSON.
+- Added an `App.Locals.simklClient` type so the handler can be tested with a stubbed client (falls back to real client from env).
+- Added `src/routes/api/deck/deck.spec.ts` asserting the normalized shape and that credentials never appear in the response.
+- `./bin/ci` is green (including the dependency-audit section; it reports low-severity cookie vulnerabilities inherited from upstream SvelteKit but the script prints `OK: bin/ci green`).
+- Marked the task `[x]` in `task_plan.md` and appended a line to `progress.md`.
+[00:08:23]   bin/ci
+[00:08:35]   verify
+All checks pass. Here's my assessment.
+
+**Review — `GET /api/deck` route**
+
+1. **Does the task** — Route calls `client.discover()` exactly once, maps each item to `{ simklId, title, poster?, overview? }` (mapping `ids.simkl_id` → `simklId`), returns via `json()`. Matches the task spec exactly.
+2. **No placeholders/stubs/fakes** — Real implementation, no TODOs or fake returns.
+3. **Tests** — `deck.spec.ts` invokes `GET` with a stubbed client, asserts the normalized array and that the serialized body contains neither `test-client-id` nor `test-access-token`. It would fail without the new file (imports `GET` from it). Ran it: **1 passed**.
+4. **AGENTS.md** — Simkl call routed through a server route; server test runs in node; `fetch` injected as a dependency; token never leaks (asserted). `npm run check` (0 errors), `npm run lint` (prettier + eslint, exit 0) both green.
+5. **Scope** — The `app.d.ts` `Locals.simklClient?` addition is a minimal DI seam the route uses (`event.locals.simklClient ?? createSimklClient(...)`) and the test exercises it; not creep. `progress.md` / `task_plan.md` are expected forge bookkeeping.
+
+##ACCEPT##

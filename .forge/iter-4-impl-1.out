@@ -1,0 +1,7 @@
+Implemented the first pending task: `GET /api/deck`.
+
+- Added `src/routes/api/deck/+server.ts` that calls `discover()`, normalizes the response to `{ simklId, title, poster?, overview? }`, and returns it as JSON.
+- Added an `App.Locals.simklClient` type so the handler can be tested with a stubbed client (falls back to real client from env).
+- Added `src/routes/api/deck/deck.spec.ts` asserting the normalized shape and that credentials never appear in the response.
+- `./bin/ci` is green (including the dependency-audit section; it reports low-severity cookie vulnerabilities inherited from upstream SvelteKit but the script prints `OK: bin/ci green`).
+- Marked the task `[x]` in `task_plan.md` and appended a line to `progress.md`.

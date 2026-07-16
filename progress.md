@@ -19,3 +19,4 @@
   `src/lib/server/simkl.spec.ts` node tests asserting trending URL, headers, write bodies using
   `ids.simkl`, and SimklApiError on non-OK response; verified with `./bin/ci`.
 
+- 2026-07-16 — Implemented `GET /api/deck` route at `src/routes/api/deck/+server.ts`; normalizes Simkl trending items to `{ simklId, title, poster?, overview? }` and never leaks server credentials. Added `src/routes/api/deck/deck.spec.ts` server test asserting normalization and credential absence; verified with `./bin/ci`.

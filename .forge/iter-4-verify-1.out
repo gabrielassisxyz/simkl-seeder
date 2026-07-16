@@ -1,0 +1,11 @@
+All checks pass. Here's my assessment.
+
+**Review — `GET /api/deck` route**
+
+1. **Does the task** — Route calls `client.discover()` exactly once, maps each item to `{ simklId, title, poster?, overview? }` (mapping `ids.simkl_id` → `simklId`), returns via `json()`. Matches the task spec exactly.
+2. **No placeholders/stubs/fakes** — Real implementation, no TODOs or fake returns.
+3. **Tests** — `deck.spec.ts` invokes `GET` with a stubbed client, asserts the normalized array and that the serialized body contains neither `test-client-id` nor `test-access-token`. It would fail without the new file (imports `GET` from it). Ran it: **1 passed**.
+4. **AGENTS.md** — Simkl call routed through a server route; server test runs in node; `fetch` injected as a dependency; token never leaks (asserted). `npm run check` (0 errors), `npm run lint` (prettier + eslint, exit 0) both green.
+5. **Scope** — The `app.d.ts` `Locals.simklClient?` addition is a minimal DI seam the route uses (`event.locals.simklClient ?? createSimklClient(...)`) and the test exercises it; not creep. `progress.md` / `task_plan.md` are expected forge bookkeeping.
+
+##ACCEPT##

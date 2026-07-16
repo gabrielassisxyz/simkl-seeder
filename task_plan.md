@@ -32,7 +32,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
 
 ## Phase 2 — API routes (the proxy surface the browser calls)
 
-- [ ] **`GET /api/deck` route** (`src/routes/api/deck/+server.ts`) → one `discover()` call,
+- [x] **`GET /api/deck` route** (`src/routes/api/deck/+server.ts`) → one `discover()` call,
   returns a normalized array `{ simklId, title, poster?, overview? }`. — done when: a node
   test invokes the handler with a stubbed client and gets the normalized array back; the
   response never contains the token or client_id.
