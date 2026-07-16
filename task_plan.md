@@ -53,7 +53,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   visible at the bottom of the card. — done when: a browser test renders the component with a
   title prop and asserts the title text is on screen.
 
-- [ ] **See-more / description toggle on the card** — a tap target (mobile) / control that
+- [x] **See-more / description toggle on the card** — a tap target (mobile) / control that
   reveals the overview text. — done when: a browser test toggles it and asserts the overview
   text appears, then hides.
 

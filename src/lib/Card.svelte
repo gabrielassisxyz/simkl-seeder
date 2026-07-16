@@ -6,10 +6,15 @@
 	}
 
 	let { item }: Props = $props();
+	let expanded = $state(false);
 
 	function posterUrl(poster?: string): string | undefined {
 		if (!poster) return undefined;
 		return `https://simkl.net/posters/${poster}_m.jpg`;
+	}
+
+	function toggle() {
+		expanded = !expanded;
 	}
 </script>
 
@@ -22,6 +27,21 @@
 	<div class="title-bar">
 		<h2>{item.title}</h2>
 	</div>
+	<button
+		class="see-more"
+		type="button"
+		aria-expanded={expanded}
+		aria-label={expanded ? 'Hide description' : 'Show description'}
+		data-testid="see-more"
+		onclick={toggle}
+	>
+		{expanded ? 'Less' : 'More'}
+	</button>
+	{#if expanded && item.overview}
+		<div class="overview" data-testid="overview">
+			<p>{item.overview}</p>
+		</div>
+	{/if}
 </article>
 
 <style>
@@ -66,5 +86,39 @@
 		font-size: 1.25rem;
 		font-weight: 600;
 		line-height: 1.3;
+	}
+
+	.see-more {
+		position: absolute;
+		right: 0.75rem;
+		bottom: 0.75rem;
+		z-index: 2;
+		padding: 0.35rem 0.7rem;
+		border: none;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.15);
+		color: #fff;
+		font-size: 0.85rem;
+		font-weight: 500;
+		backdrop-filter: blur(4px);
+		cursor: pointer;
+	}
+
+	.overview {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		padding: 1.25rem;
+		display: flex;
+		align-items: flex-end;
+		background: linear-gradient(transparent 10%, rgba(0, 0, 0, 0.92) 45%);
+		color: #eee;
+		overflow-y: auto;
+	}
+
+	.overview p {
+		margin: 0;
+		font-size: 0.95rem;
+		line-height: 1.5;
 	}
 </style>

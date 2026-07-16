@@ -33,4 +33,20 @@ describe('Card.svelte', () => {
 		await expect.element(page.getByText('No poster', { exact: true })).toBeInTheDocument();
 		await expect.element(page.getByRole('img')).not.toBeInTheDocument();
 	});
+
+	it('toggles the overview on see-more click', async () => {
+		render(Card, { item });
+
+		const button = page.getByTestId('see-more');
+		await expect.element(button).toHaveTextContent('More');
+		await expect.element(page.getByTestId('overview')).not.toBeInTheDocument();
+
+		await button.click();
+		await expect.element(button).toHaveTextContent('Less');
+		await expect.element(page.getByTestId('overview')).toHaveTextContent(item.overview);
+
+		await button.click();
+		await expect.element(button).toHaveTextContent('More');
+		await expect.element(page.getByTestId('overview')).not.toBeInTheDocument();
+	});
 });
