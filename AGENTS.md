@@ -25,7 +25,8 @@ Anti-goal: NOT a full Simkl client, NOT two-way sync, NOT a background daemon.
 - `npm test` — vitest run (client + server projects).
 - `./bin/ci` — the full gate; CI runs this verbatim, so green here == green in CI.
 - `./bin/install-hooks` — activate the gitleaks pre-commit hook (run once per clone).
-- `SIMKL_CLIENT_ID=… ./scripts/simkl-login.sh` — one-time PIN login → access_token.
+- `./scripts/simkl-login.sh` — one-time PIN login → access_token (reads `SIMKL_CLIENT_ID`
+  from `.env`; inline `SIMKL_CLIENT_ID=… ./scripts/simkl-login.sh` still overrides).
 
 ## Deterministic gates (never skip)
 

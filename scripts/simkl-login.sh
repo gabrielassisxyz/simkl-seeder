@@ -8,17 +8,28 @@
 #   2. You open the URL, type the code, authorize.
 #   3. Poll GET {base}/oauth/pin/{user_code}?client_id=...  until it returns access_token.
 #
-# Usage:  SIMKL_CLIENT_ID=xxxx ./scripts/simkl-login.sh
+# Usage:  put SIMKL_CLIENT_ID in .env (cp .env.example .env), then: ./scripts/simkl-login.sh
+#         or override inline:                     SIMKL_CLIENT_ID=xxxx ./scripts/simkl-login.sh
 # The response field names are logged raw on anything unexpected, so a docs drift is
 # visible rather than silent. Confirm shapes against https://api.simkl.org/authentication.
 set -euo pipefail
+
+# Credentials come from .env (copy .env.example first). An inline VAR=... still wins:
+# a SIMKL_* value is pulled from .env only when it is not already set in the environment.
+cd "$(dirname "$0")/.."
+if [[ -f .env ]]; then
+	while IFS='=' read -r key val; do
+		[[ $key == SIMKL_* && -z "${!key:-}" ]] && export "$key=$val"
+	done < <(grep -E '^[[:space:]]*SIMKL_[A-Z_]+=' .env | sed 's/^[[:space:]]*//; s/[[:space:]]*=[[:space:]]*/=/')
+fi
 
 BASE="${SIMKL_API_BASE:-https://api.simkl.com}"
 CLIENT_ID="${SIMKL_CLIENT_ID:-}"
 
 if [[ -z "$CLIENT_ID" ]]; then
-	echo "ERROR: set SIMKL_CLIENT_ID (from your Simkl app) first." >&2
-	echo "  SIMKL_CLIENT_ID=xxxx $0" >&2
+	echo "ERROR: SIMKL_CLIENT_ID is not set — put it in .env, or pass it inline." >&2
+	echo "  echo 'SIMKL_CLIENT_ID=xxxx' >> .env   # then: ./scripts/simkl-login.sh" >&2
+	echo "  or:  SIMKL_CLIENT_ID=xxxx ./scripts/simkl-login.sh" >&2
 	exit 1
 fi
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required." >&2; exit 1; }
