@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Point git at the versioned .githooks dir. Run once after clone.
+# WHY versioned: a raw .git/hooks/pre-commit is not tracked, so it silently
+# does not travel to a fresh clone; core.hooksPath makes the gate shareable.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+git config core.hooksPath .githooks
+echo "OK: core.hooksPath -> .githooks (gitleaks pre-commit active)"

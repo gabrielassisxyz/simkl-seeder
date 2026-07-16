@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# The single gate. CI runs THIS verbatim, so "green here" means "green in CI".
+# Fails fast (set -e) on the first failing step; each step is what a reader expects.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "==> lint (prettier --check + eslint)"
+npm run lint
+
+echo "==> types (svelte-check)"
+npm run check
+
+echo "==> tests (vitest, client + server projects)"
+npm test
+
+echo "==> dependency audit (fail on high/critical)"
+npm audit --audit-level=high
+
+echo "OK: bin/ci green"
