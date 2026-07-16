@@ -47,8 +47,17 @@
 		<Swipeable onAction={handleAction}>
 			<Card item={deck.current} bind:expanded />
 		</Swipeable>
+		<div class="hint" aria-live="polite">
+			<span class="hint-key">←</span> skip
+			<span class="hint-key">→</span> watch later
+			<span class="hint-key">↑</span> watched
+			<span class="hint-key">Space</span> more
+		</div>
 	{:else}
-		<p class="empty" data-testid="empty">No more titles — you're all caught up.</p>
+		<div class="empty" data-testid="empty">
+			<h1>You're all caught up.</h1>
+			<p>No more titles in the deck right now.</p>
+		</div>
 	{/if}
 </main>
 
@@ -56,13 +65,53 @@
 	.deck {
 		display: grid;
 		place-items: center;
-		min-height: 100dvh;
-		padding: 1rem;
-		background: #0d0d0d;
+		align-content: center;
+		min-height: 100%;
+		padding: clamp(1rem, 5vw, 2.5rem);
+		gap: 1.5rem;
+		background: var(--ground);
+	}
+
+	.hint {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem 1.25rem;
+		color: var(--text-muted);
+		font-size: 0.85rem;
+		font-weight: 500;
+	}
+
+	.hint-key {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.5rem;
+		padding: 0.15rem 0.4rem;
+		border: 1px solid var(--hairline);
+		border-radius: var(--radius-sm);
+		background: var(--surface);
+		color: var(--text);
+		font-size: 0.75rem;
+		font-weight: 600;
 	}
 
 	.empty {
-		color: #aaa;
-		font-size: 1.1rem;
+		text-align: center;
+		color: var(--text-muted);
+	}
+
+	.empty h1 {
+		margin: 0 0 0.5rem;
+		font-family: var(--font-display);
+		font-size: clamp(1.5rem, 5vw, 2.25rem);
+		font-weight: 700;
+		letter-spacing: -0.03em;
+		color: var(--text);
+	}
+
+	.empty p {
+		margin: 0;
+		font-size: 1rem;
 	}
 </style>
