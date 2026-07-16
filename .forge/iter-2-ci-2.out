@@ -1,0 +1,58 @@
+==> lint (prettier --check + eslint)
+
+> simkl-seeder@0.0.1 lint
+> prettier --check . && eslint .
+
+Checking formatting...
+All matched files use Prettier code style!
+==> types (svelte-check)
+
+> simkl-seeder@0.0.1 check
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: /home/gabriel/repositories/simkl-seeder
+Getting Svelte diagnostics...
+
+svelte-check found 0 errors and 0 warnings
+==> tests (vitest, client + server projects)
+
+> simkl-seeder@0.0.1 test
+> npm run test:unit -- --run
+
+
+> simkl-seeder@0.0.1 test:unit
+> vitest --run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/gabriel/repositories/simkl-seeder[39m
+
+[2m12:01:46 AM[22m [36m[1m[vite][22m[39m (ssr) Re-optimizing dependencies because vite config has changed
+ [32m✓[39m [30m[42m server [49m[39m src/lib/vitest-examples/greet.spec.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[42m server [49m[39m src/lib/server/env.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m client (chromium) [49m[39m src/lib/vitest-examples/Welcome.svelte.spec.ts [2m([22m[2m1 test[22m[2m)[22m[32m 25[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 00:01:46
+[2m   Duration [22m 1.73s[2m (transform 33ms, setup 0ms, import 213ms, tests 33ms, environment 1ms)[22m
+
+==> dependency audit (fail on high/critical)
+# npm audit report
+
+cookie  <0.7.0
+cookie accepts cookie name, path, and domain with out of bounds characters - https://github.com/advisories/GHSA-pxg6-pf52-xh8x
+fix available via `npm audit fix --force`
+Will install @sveltejs/kit@0.0.30, which is a breaking change
+node_modules/cookie
+  @sveltejs/kit  1.0.0-next.0 - 2.69.3
+  Depends on vulnerable versions of cookie
+  node_modules/@sveltejs/kit
+    @sveltejs/adapter-node  1.0.0-next.0 - 6.0.0-next.2
+    Depends on vulnerable versions of @sveltejs/kit
+    node_modules/@sveltejs/adapter-node
+
+3 low severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+OK: bin/ci green

@@ -1,0 +1,5 @@
+Done. Task complete.
+
+- Implemented `src/lib/server/env.ts`: typed `simklConfig()` + named `SimklEnvError`; defaults `SIMKL_API_BASE` to `https://api.simkl.com`.
+- Added passing node test suite at `src/lib/server/env.spec.ts` (4 tests).
+- Updated `task_plan.md` `[ ] → [x]`, appended `progress.md`, and noted the accessor in `findings.md`.

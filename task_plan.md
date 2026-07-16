@@ -17,7 +17,7 @@ those are v2. Key facts live in `findings.md`; read it first every iteration.
   `src/lib/server/__fixtures__/discover.json` for tests to load, and `findings.md`'s API
   section notes the field paths (title, `ids.simkl_id`, poster, overview).
 
-- [ ] **Config accessor `src/lib/server/env.ts`.** Read `SIMKL_CLIENT_ID`,
+- [x] **Config accessor `src/lib/server/env.ts`.** Read `SIMKL_CLIENT_ID`,
   `SIMKL_ACCESS_TOKEN`, `SIMKL_API_BASE` (default `https://api.simkl.com`) from the server
   environment; explicit types. — done when: a node test asserts it returns the values when
   set and throws a clear, named error when `SIMKL_CLIENT_ID` or `SIMKL_ACCESS_TOKEN` is

@@ -1,0 +1,6 @@
+Fixed Prettier formatting in `src/lib/server/env.ts` and verified `./bin/ci` is green.
+
+- Formatted `src/lib/server/env.ts` with `npx prettier --write`.
+- Ran `./bin/ci` — lint, types, tests pass (audit note: 3 low-severity cookie advisories, same as before; CI script reports OK).
+
+No task_plan state change needed — this was a reviewer-fix on the already-completed config task.

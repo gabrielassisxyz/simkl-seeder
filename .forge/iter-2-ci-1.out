@@ -1,0 +1,8 @@
+==> lint (prettier --check + eslint)
+
+> simkl-seeder@0.0.1 lint
+> prettier --check . && eslint .
+
+Checking formatting...
+[warn] src/lib/server/env.ts
+[warn] Code style issues found in the above file. Run Prettier with --write to fix.

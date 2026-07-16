@@ -52,3 +52,7 @@
 - **Trending fixture captured (2026-07-15):** `GET /movies/trending` returned 50 movies
   with the documented shape. Saved to `src/lib/server/__fixtures__/discover.json`.
   The first item is *Harry Potter and the Chamber of Secrets* (`simkl_id: 54114`).
+- **Config accessor added (2026-07-15):** `src/lib/server/env.ts` exposes typed
+  `simklConfig(env?)` and `SimklEnvError`. Missing `SIMKL_CLIENT_ID` or
+  `SIMKL_ACCESS_TOKEN` throws a named error; `SIMKL_API_BASE` defaults to
+  `https://api.simkl.com`.

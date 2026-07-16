@@ -25,3 +25,40 @@ All 50 items carry `title`, `poster`, `overview`, and `ids.simkl_id` (verified: 
 Every check passes.
 
 ##ACCEPT##
+[00:00:32]   task accepted + committed
+[00:00:32] === iteration 2 — 11 task(s) left ===
+[00:00:32]   implement (attempt 1/3)
+Done. Task complete.
+
+- Implemented `src/lib/server/env.ts`: typed `simklConfig()` + named `SimklEnvError`; defaults `SIMKL_API_BASE` to `https://api.simkl.com`.
+- Added passing node test suite at `src/lib/server/env.spec.ts` (4 tests).
+- Updated `task_plan.md` `[ ] → [x]`, appended `progress.md`, and noted the accessor in `findings.md`.
+[00:01:10]   bin/ci
+[00:01:10]   bin/ci FAILED — feeding back
+[00:01:10]   implement (attempt 2/3)
+Fixed Prettier formatting in `src/lib/server/env.ts` and verified `./bin/ci` is green.
+
+- Formatted `src/lib/server/env.ts` with `npx prettier --write`.
+- Ran `./bin/ci` — lint, types, tests pass (audit note: 3 low-severity cookie advisories, same as before; CI script reports OK).
+
+No task_plan state change needed — this was a reviewer-fix on the already-completed config task.
+[00:01:39]   bin/ci
+[00:01:49]   verify
+All checks pass. Here's my assessment against the review checklist:
+
+**1. Does it do the task?** ✓ Task was: config accessor in `src/lib/server/env.ts` reading `SIMKL_CLIENT_ID`, `SIMKL_ACCESS_TOKEN`, `SIMKL_API_BASE` (default `https://api.simkl.com`), explicit types; done when a node test asserts values when set and a clear named error when either credential is missing.
+- `simklConfig()` reads all three vars, defaults `apiBase` to `https://api.simkl.com` (env.ts:28).
+- Explicit types: `SimklConfig` interface + typed signature (env.ts:8-14).
+- Named error: `SimklEnvError` with `this.name` set (env.ts:1-6), thrown for each missing credential.
+
+**2. Placeholders/stubs/fakes?** None. Real, complete implementation.
+
+**3. Tests?** ✓ 4 tests exercise exactly the required behaviors (values-when-set, default base, missing `SIMKL_CLIENT_ID`, missing `SIMKL_ACCESS_TOKEN`), asserting both the `SimklEnvError` type and the message. They'd fail without the change (import wouldn't resolve; assertions test real behavior). Ran them — 4 passed.
+
+**4. AGENTS.md conventions?** ✓ Server-side module, explicit types, dependency injection (`env` param defaulting to `process.env` — testable, matches "inject dependencies"), small SRP function, prettier + eslint clean.
+
+**5. Scope?** ✓ Only `env.ts` + `env.spec.ts` plus expected harness bookkeeping (findings/progress/task_plan/.forge). No unrelated code touched.
+
+Minor note (not a defect): using `!clientId` treats an empty-string value as missing too — stricter than "missing" but correct and safer.
+
+##ACCEPT##
