@@ -9,6 +9,16 @@ export interface DeckItem {
 	title: string;
 	poster?: string;
 	overview?: string;
+	year?: number;
+	runtime?: number;
+	ratingSimkl?: number;
+	ratingImdb?: number;
+}
+
+function yearFromDate(date?: string): number | undefined {
+	if (!date) return undefined;
+	const year = Number(date.split('-')[0]);
+	return Number.isFinite(year) ? year : undefined;
 }
 
 export async function GET(event: RequestEvent): Promise<Response> {
@@ -23,7 +33,11 @@ export async function GET(event: RequestEvent): Promise<Response> {
 		simklId: item.ids.simkl_id,
 		title: item.title,
 		poster: item.poster,
-		overview: item.overview
+		overview: item.overview,
+		year: yearFromDate(item.release_date),
+		runtime: item.runtime,
+		ratingSimkl: item.ratings?.simkl,
+		ratingImdb: item.ratings?.imdb
 	}));
 
 	return json(deck);

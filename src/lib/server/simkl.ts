@@ -1,17 +1,25 @@
 import { simklConfig, type SimklConfig } from './env';
 
-export interface SimklClientOptions {
-	fetch: typeof globalThis.fetch;
-	config: SimklConfig;
+export interface SimklRating {
+	imdb?: number;
+	simkl?: number;
 }
 
 export interface DiscoverItem {
 	title: string;
 	poster?: string;
 	overview?: string;
+	release_date?: string;
+	runtime?: number;
+	ratings?: SimklRating;
 	ids: {
 		simkl_id: number;
 	};
+}
+
+export interface SimklClientOptions {
+	fetch: typeof globalThis.fetch;
+	config: SimklConfig;
 }
 
 export function createSimklClient({ fetch, config }: SimklClientOptions) {

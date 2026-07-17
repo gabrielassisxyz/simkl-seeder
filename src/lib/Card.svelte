@@ -3,20 +3,43 @@
 
 	interface Props {
 		item: DeckItem;
-		expanded?: boolean;
+		dragProgress?: number;
+		onOpenModal?: () => void;
 	}
 
-	// `expanded` is bindable so the page can also drive see-more from a hotkey,
-	// while the in-card button keeps working on its own.
-	let { item, expanded = $bindable(false) }: Props = $props();
+	let { item, dragProgress = 0, onOpenModal }: Props = $props();
 
 	function posterUrl(poster?: string): string | undefined {
 		if (!poster) return undefined;
 		return `https://simkl.net/posters/${poster}_m.jpg`;
 	}
 
-	function toggle() {
-		expanded = !expanded;
+	function clamp(n: number, min: number, max: number): number {
+		return Math.max(min, Math.min(max, n));
+	}
+
+	const hintOpacity = $derived(clamp(Math.abs(dragProgress) * 0.025, 0, 1));
+	const hintScale = $derived(0.85 + clamp(Math.abs(dragProgress) * 0.002, 0, 0.25));
+	const hintColor = $derived(
+		dragProgress > 0 ? 'var(--swipe-like, var(--accent))' : 'var(--swipe-skip, var(--text-muted))'
+	);
+	const hintLabel = $derived(dragProgress > 0 ? 'LIKE' : 'SKIP');
+	const hintIcon = $derived(dragProgress > 0 ? '♥' : '✕');
+
+	function formatRuntime(minutes?: number): string | undefined {
+		if (!minutes || minutes <= 0) return undefined;
+		const h = Math.floor(minutes / 60);
+		const m = minutes % 60;
+		if (h === 0) return `${m}m`;
+		return m === 0 ? `${h}h` : `${h}h ${m}m`;
+	}
+
+	function metaLine(item: DeckItem): string {
+		const parts: string[] = [];
+		if (item.year) parts.push(String(item.year));
+		const runtime = formatRuntime(item.runtime);
+		if (runtime) parts.push(runtime);
+		return parts.join('  ·  ');
 	}
 </script>
 
@@ -26,32 +49,37 @@
 	{:else}
 		<div class="poster-placeholder">No poster</div>
 	{/if}
-	<div class="title-bar">
-		<h2>{item.title}</h2>
-		<button
-			class="see-more"
-			type="button"
-			aria-expanded={expanded}
-			aria-label={expanded ? 'Hide description' : 'Show description'}
-			data-testid="see-more"
-			onclick={toggle}
-		>
-			{expanded ? 'Less' : 'More'}
-		</button>
+
+	<div
+		class="drag-hint"
+		style:opacity={hintOpacity}
+		style:color={hintColor}
+		style:transform="translate(-50%, -50%) scale({hintScale})"
+	>
+		<span class="hint-icon">{hintIcon}</span>
+		<span class="hint-text">{hintLabel}</span>
 	</div>
-	{#if expanded && item.overview}
-		<div class="overview" data-testid="overview">
-			<p>{item.overview}</p>
+
+	<button
+		class="title-bar"
+		type="button"
+		aria-label="Open details for {item.title}"
+		data-testid="open-modal"
+		onclick={onOpenModal}
+	>
+		<div class="title-row">
+			<h2>{item.title}</h2>
+			<span class="meta">{metaLine(item)}</span>
 		</div>
-	{/if}
+		<span class="chevron" aria-hidden="true">▲</span>
+	</button>
 </article>
 
 <style>
 	.card {
 		position: relative;
 		width: 100%;
-		max-width: 22rem;
-		aspect-ratio: 2 / 3;
+		height: 100%;
 		border-radius: var(--radius-md);
 		overflow: hidden;
 		background: var(--ground-elevated);
@@ -76,6 +104,34 @@
 		background: var(--surface);
 	}
 
+	.drag-hint {
+		position: absolute;
+		top: 16%;
+		left: 50%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		pointer-events: none;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+		border: 3px solid currentColor;
+		border-radius: var(--radius-md);
+		padding: 0.6rem 1.1rem;
+		transform-origin: center;
+		will-change: transform, opacity;
+	}
+
+	.hint-icon {
+		font-size: 1.5rem;
+		line-height: 1;
+	}
+
+	.hint-text {
+		font-size: 0.85rem;
+	}
+
 	.title-bar {
 		position: absolute;
 		bottom: 0;
@@ -87,8 +143,27 @@
 		border-top: 1px solid var(--hairline);
 		color: var(--text);
 		display: flex;
-		flex-direction: column;
+		align-items: flex-end;
+		justify-content: space-between;
 		gap: 0.75rem;
+		text-align: left;
+		cursor: pointer;
+		transition: background 150ms ease-out;
+	}
+
+	.title-bar:hover {
+		background: var(--surface);
+	}
+
+	.title-bar:active {
+		background: var(--surface);
+	}
+
+	.title-row {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		min-width: 0;
 	}
 
 	.title-bar h2 {
@@ -100,62 +175,22 @@
 		letter-spacing: -0.02em;
 	}
 
-	.see-more {
-		align-self: flex-start;
-		padding: 0.4rem 0.85rem;
-		border: 1px solid var(--hairline);
-		border-radius: var(--radius-sm);
-		background: var(--surface);
-		color: var(--text);
-		font-family: var(--font-body);
+	.meta {
 		font-size: 0.85rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
-	}
-
-	.see-more:hover {
-		background: var(--accent-soft);
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-
-	.overview {
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-		padding: 1.5rem;
-		padding-top: 1.25rem;
-		display: flex;
-		align-items: flex-end;
-		background: var(--ground-elevated);
-		color: var(--text);
-		overflow-y: auto;
-		border-top: 1px solid var(--hairline);
-		animation: fade-in 180ms ease-out;
-	}
-
-	.overview p {
-		margin: 0;
-		font-size: 1rem;
-		line-height: 1.55;
 		color: var(--text-muted);
+		font-weight: 500;
 	}
 
-	@keyframes fade-in {
-		from {
-			opacity: 0;
-			transform: translateY(0.25rem);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+	.chevron {
+		color: var(--text-subtle);
+		font-size: 0.75rem;
+		transition: transform 200ms ease-out;
+		flex-shrink: 0;
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.overview {
-			animation: none;
-		}
+	.title-bar:hover .chevron,
+	.title-bar:active .chevron {
+		transform: translateY(-2px);
+		color: var(--accent);
 	}
 </style>

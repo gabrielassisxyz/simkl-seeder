@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
@@ -16,7 +17,7 @@
 
 <div class="app">
 	<header class="topbar">
-		<a href="/" class="logo">Simkl Seeder</a>
+		<a href={resolve('/')} class="logo">Simkl Seeder</a>
 	</header>
 	{@render children()}
 </div>

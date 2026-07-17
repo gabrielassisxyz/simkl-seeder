@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import Card from './Card.svelte';
 
@@ -7,7 +7,11 @@ const item = {
 	simklId: 54114,
 	title: 'Harry Potter and the Chamber of Secrets',
 	poster: '54/5456742c5450c5ab4',
-	overview: 'Cars fly, trees fight back...'
+	overview: 'Cars fly, trees fight back...',
+	year: 2002,
+	runtime: 161,
+	ratingSimkl: 8.4,
+	ratingImdb: 7.4
 };
 
 describe('Card.svelte', () => {
@@ -34,19 +38,29 @@ describe('Card.svelte', () => {
 		await expect.element(page.getByRole('img')).not.toBeInTheDocument();
 	});
 
-	it('toggles the overview on see-more click', async () => {
+	it('opens the modal when the title bar is clicked', async () => {
+		const onOpenModal = vi.fn();
+		render(Card, { item, onOpenModal });
+
+		const card = await page.getByTestId('card').element();
+		card.style.width = '300px';
+		card.style.height = '450px';
+		card.style.position = 'relative';
+
+		const button = page.getByTestId('open-modal');
+		await button.click();
+		await vi.waitFor(() => expect(onOpenModal).toHaveBeenCalledTimes(1));
+	});
+
+	it('shows year and runtime in the meta line', async () => {
 		render(Card, { item });
 
-		const button = page.getByTestId('see-more');
-		await expect.element(button).toHaveTextContent('More');
-		await expect.element(page.getByTestId('overview')).not.toBeInTheDocument();
+		const card = await page.getByTestId('card').element();
+		card.style.width = '300px';
+		card.style.height = '450px';
+		card.style.position = 'relative';
 
-		await button.click();
-		await expect.element(button).toHaveTextContent('Less');
-		await expect.element(page.getByTestId('overview')).toHaveTextContent(item.overview);
-
-		await button.click();
-		await expect.element(button).toHaveTextContent('More');
-		await expect.element(page.getByTestId('overview')).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('open-modal')).toHaveTextContent('2002');
+		await expect.element(page.getByTestId('open-modal')).toHaveTextContent('2h 41m');
 	});
 });
