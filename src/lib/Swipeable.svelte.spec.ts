@@ -3,31 +3,33 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import Swipeable from './Swipeable.svelte';
 
-const ORIGIN = { x: 100, y: 100 };
+const ORIGIN = { x: 200, y: 300 };
 
-function makeTouch(element: Element, clientX: number, clientY: number): Touch {
-	return new Touch({ identifier: 1, target: element, clientX, clientY });
+function dispatchPointerEvent(
+	element: Element,
+	type: string,
+	clientX: number,
+	clientY: number,
+	options: { pointerId?: number; isPrimary?: boolean; buttons?: number } = {}
+) {
+	const event = new PointerEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		pointerType: 'mouse',
+		clientX,
+		clientY,
+		pointerId: options.pointerId ?? 1,
+		isPrimary: options.isPrimary ?? true,
+		button: 0,
+		buttons: options.buttons ?? (type === 'pointerup' ? 0 : 1)
+	});
+	element.dispatchEvent(event);
 }
 
 function swipe(element: Element, toX: number, toY: number) {
-	const start = makeTouch(element, ORIGIN.x, ORIGIN.y);
-	const end = makeTouch(element, toX, toY);
-	element.dispatchEvent(
-		new TouchEvent('touchstart', {
-			bubbles: true,
-			touches: [start],
-			targetTouches: [start],
-			changedTouches: [start]
-		})
-	);
-	element.dispatchEvent(
-		new TouchEvent('touchend', {
-			bubbles: true,
-			touches: [],
-			targetTouches: [],
-			changedTouches: [end]
-		})
-	);
+	dispatchPointerEvent(element, 'pointerdown', ORIGIN.x, ORIGIN.y);
+	dispatchPointerEvent(element, 'pointermove', toX, toY);
+	dispatchPointerEvent(element, 'pointerup', toX, toY);
 }
 
 describe('Swipeable.svelte', () => {
@@ -36,9 +38,9 @@ describe('Swipeable.svelte', () => {
 		render(Swipeable, { onAction });
 		const element = await page.getByTestId('swipeable').element();
 
-		swipe(element, 200, 100);
+		swipe(element, ORIGIN.x + 140, ORIGIN.y);
+		await vi.waitFor(() => expect(onAction).toHaveBeenCalledTimes(1));
 
-		expect(onAction).toHaveBeenCalledTimes(1);
 		expect(onAction).toHaveBeenCalledWith('watchlater');
 	});
 
@@ -47,9 +49,9 @@ describe('Swipeable.svelte', () => {
 		render(Swipeable, { onAction });
 		const element = await page.getByTestId('swipeable').element();
 
-		swipe(element, 0, 100);
+		swipe(element, ORIGIN.x - 140, ORIGIN.y);
+		await vi.waitFor(() => expect(onAction).toHaveBeenCalledTimes(1));
 
-		expect(onAction).toHaveBeenCalledTimes(1);
 		expect(onAction).toHaveBeenCalledWith('skip');
 	});
 
@@ -58,9 +60,9 @@ describe('Swipeable.svelte', () => {
 		render(Swipeable, { onAction });
 		const element = await page.getByTestId('swipeable').element();
 
-		swipe(element, 100, 0);
+		swipe(element, ORIGIN.x, ORIGIN.y - 140);
+		await vi.waitFor(() => expect(onAction).toHaveBeenCalledTimes(1));
 
-		expect(onAction).toHaveBeenCalledTimes(1);
 		expect(onAction).toHaveBeenCalledWith('watched');
 	});
 
@@ -69,7 +71,8 @@ describe('Swipeable.svelte', () => {
 		render(Swipeable, { onAction });
 		const element = await page.getByTestId('swipeable').element();
 
-		swipe(element, 110, 100);
+		swipe(element, ORIGIN.x + 40, ORIGIN.y);
+		await new Promise((r) => setTimeout(r, 120));
 
 		expect(onAction).not.toHaveBeenCalled();
 	});
@@ -79,7 +82,8 @@ describe('Swipeable.svelte', () => {
 		render(Swipeable, { onAction });
 		const element = await page.getByTestId('swipeable').element();
 
-		swipe(element, 100, 200);
+		swipe(element, ORIGIN.x, ORIGIN.y + 140);
+		await new Promise((r) => setTimeout(r, 120));
 
 		expect(onAction).not.toHaveBeenCalled();
 	});

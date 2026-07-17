@@ -3,6 +3,10 @@ export interface DeckItem {
 	title: string;
 	poster?: string;
 	overview?: string;
+	year?: number;
+	runtime?: number;
+	ratingSimkl?: number;
+	ratingImdb?: number;
 }
 
 export interface DeckState {

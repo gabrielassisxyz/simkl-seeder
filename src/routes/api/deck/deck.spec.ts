@@ -33,6 +33,9 @@ describe('GET /api/deck', () => {
 				title: 'Fixture One',
 				poster: '54/5456742c5450c5ab4',
 				overview: 'First overview.',
+				release_date: '2022-06-15',
+				runtime: '2h 5m',
+				ratings: { simkl: { rating: 8.1, votes: 100 }, imdb: { rating: 7.2, votes: 200 } },
 				ids: { simkl_id: 123 }
 			},
 			{
@@ -56,9 +59,13 @@ describe('GET /api/deck', () => {
 				simklId: 123,
 				title: 'Fixture One',
 				poster: '54/5456742c5450c5ab4',
-				overview: 'First overview.'
+				overview: 'First overview.',
+				year: 2022,
+				runtime: 125,
+				ratingSimkl: 8.1,
+				ratingImdb: 7.2
 			},
-			{ simklId: 456, title: 'Fixture Two', poster: undefined, overview: undefined }
+			{ simklId: 456, title: 'Fixture Two' }
 		]);
 
 		const text = JSON.stringify(body);

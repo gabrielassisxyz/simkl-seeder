@@ -1,17 +1,32 @@
 import { simklConfig, type SimklConfig } from './env';
 
-export interface SimklClientOptions {
-	fetch: typeof globalThis.fetch;
-	config: SimklConfig;
+// Simkl nests each provider's score under `{ rating, votes }`, and sends runtime
+// as a human string like "2h 41m" — the raw shapes the mapping must normalise.
+export interface SimklRatingValue {
+	rating?: number;
+	votes?: number;
+}
+
+export interface SimklRatings {
+	imdb?: SimklRatingValue;
+	simkl?: SimklRatingValue;
 }
 
 export interface DiscoverItem {
 	title: string;
 	poster?: string;
 	overview?: string;
+	release_date?: string;
+	runtime?: string;
+	ratings?: SimklRatings;
 	ids: {
 		simkl_id: number;
 	};
+}
+
+export interface SimklClientOptions {
+	fetch: typeof globalThis.fetch;
+	config: SimklConfig;
 }
 
 export function createSimklClient({ fetch, config }: SimklClientOptions) {

@@ -14,7 +14,7 @@ last_reviewed: 2026-07-16
 >
 > **How this reaches a build:** for a UI project, a repo-local `DESIGN.md` is seeded as a literal
 > copy of this file for the maker to read; the reviewer reads this file directly. The accent
-> travels as a *rule* (see below), so the maker resolves the concrete hue while building.
+> travels as a _rule_ (see below), so the maker resolves the concrete hue while building.
 >
 > Grounded in a design-taste interview (2026-07-16), Emil Kowalski's design-engineering
 > principles (the motion section), and impeccable's documented ai-tell catalog. The
@@ -33,22 +33,22 @@ serif-title look that every AI tool falls into.
 ### Grounds (neutrals)
 
 - **Dark ground: neutral charcoal `#17171A`.** Not pure black, not the bluish "developer dark".
-  *(I reacted to a warm-vs-neutral spectrum and picked the neutral — my stated lean toward warm
-  didn't survive seeing it.)*
+  _(I reacted to a warm-vs-neutral spectrum and picked the neutral — my stated lean toward warm
+  didn't survive seeing it.)_
 - **Light ground: soft off-white `#FAF9F7`.** Barely warm — like my blog. **Not cream**: pushed
   further into beige it becomes a tell.
 - **Never pure white** (`#FFFFFF` is harsh on a full surface) **or pure black.**
 - **Both themes always exist** (CSS custom properties; light and dark get equal care).
   **Default-theme rule (keep it simple):** app for **mobile / PWA / phone** (e.g. simkl-seeder)
-  → default **dark**; app for **desktop** → default **light**. *Why: I prefer light for dense
-  desktop work, and on my laptop's poor screen dark is hard to read; phones lean dark.*
+  → default **dark**; app for **desktop** → default **light**. _Why: I prefer light for dense
+  desktop work, and on my laptop's poor screen dark is hard to read; phones lean dark._
 
 ### The accent — a rule, not a fixed color
 
-I don't want one accent for everything; the right hue depends on the tool. So I lock the *feel*
+I don't want one accent for everything; the right hue depends on the tool. So I lock the _feel_
 and leave the hue free.
 
-- **Exactly ONE accent hue per tool.** It is the *only* chromatic color on the page — everything
+- **Exactly ONE accent hue per tool.** It is the _only_ chromatic color on the page — everything
   else is neutral. This is the whole point of "monochromatic" for me.
 - **Locked (the muted-but-alive band):** saturation **S ≈ 30–45%**; lightness **L ≈ 52–60% on
   dark**, **≈ 42–50% on light** (so it holds contrast on the ground). Below ~30% S it goes dead;
@@ -56,18 +56,18 @@ and leave the hue free.
 - **Free: the hue (H).** The builder picks it to fit the tool, from muted cool/earthy families —
   **teal, sage, dusty violet** are my confirmed likes. **Never orange / terracotta** — that warm
   accent is my #1 AI tell.
-- **Intensity scales with purpose.** A tool that should *not* grab attention (a monitor like
+- **Intensity scales with purpose.** A tool that should _not_ grab attention (a monitor like
   hardware-usage) sits at the **low** end of the band; something meant to feel livelier climbs
   toward the top. The band is the range; purpose picks the point.
 
 ### Monochromatic — one color, one job
 
-- **Few colors, each mapped to a *thing*, never to a *magnitude*.** A percentage bar is the
+- **Few colors, each mapped to a _thing_, never to a _magnitude_.** A percentage bar is the
   **same color at 12% and at 94%** — magnitude is read from the bar's length and the number, not
   from hue.
 - **No severity traffic-lights** (green/amber/red by value). That specific busyness is what bugs
   me most; avoid it.
-- **The rare exception:** a genuine error that truly must shout gets a *single* muted warning hue,
+- **The rare exception:** a genuine error that truly must shout gets a _single_ muted warning hue,
   used almost never (like impeccable's sparing vermilion) — not a gradient of status colors.
 - Any semantic color is separate from the accent and stays minimal.
 
@@ -80,7 +80,7 @@ and leave the hue free.
 - **Mono: only in technical apps, used sparingly** — for data, metrics, code. **Tabular numerals**
   wherever digits line up in columns. Installed & liked: **Cascadia, Iosevka**; also Commit Mono.
 - **Titles carry the page** (the one thing my references — Attio, Sana — share): strong, large,
-  with generous space around them. Since there's no hero, the *title* is the focal moment.
+  with generous space around them. Since there's no hero, the _title_ is the focal moment.
 
 ## Layout
 
@@ -135,5 +135,5 @@ My taste is "a little life, nothing gratuitous". Emil Kowalski's rules match it,
   only color).
 - **Hold the whole screen and ask: is this calm, spacious, one-accent, and free of the tells
   above?** The anti-references are a literal checklist.
-- `impeccable detect` is a **free floor** — it catches the *presence* of slop, not the *absence*
+- `impeccable detect` is a **free floor** — it catches the _presence_ of slop, not the _absence_
   of taste. Passing it is necessary, never sufficient. Real quality is this whole document.
