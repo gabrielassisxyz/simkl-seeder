@@ -17,8 +17,20 @@ export interface DeckItem {
 
 function yearFromDate(date?: string): number | undefined {
 	if (!date) return undefined;
-	const year = Number(date.split('-')[0]);
+	// Simkl sends US-format "MM/DD/YYYY"; tolerate ISO "YYYY-MM-DD" too. Grab the
+	// first 4-digit run rather than assuming a separator.
+	const match = date.match(/\d{4}/);
+	const year = match ? Number(match[0]) : NaN;
 	return Number.isFinite(year) ? year : undefined;
+}
+
+function runtimeToMinutes(runtime?: string): number | undefined {
+	if (!runtime) return undefined;
+	// Simkl sends a human string like "2h 41m" or "58m"; the UI wants minutes.
+	const hours = runtime.match(/(\d+)\s*h/);
+	const mins = runtime.match(/(\d+)\s*m/);
+	const total = (hours ? Number(hours[1]) * 60 : 0) + (mins ? Number(mins[1]) : 0);
+	return total > 0 ? total : undefined;
 }
 
 export async function GET(event: RequestEvent): Promise<Response> {
@@ -35,9 +47,9 @@ export async function GET(event: RequestEvent): Promise<Response> {
 		poster: item.poster,
 		overview: item.overview,
 		year: yearFromDate(item.release_date),
-		runtime: item.runtime,
-		ratingSimkl: item.ratings?.simkl,
-		ratingImdb: item.ratings?.imdb
+		runtime: runtimeToMinutes(item.runtime),
+		ratingSimkl: item.ratings?.simkl?.rating,
+		ratingImdb: item.ratings?.imdb?.rating
 	}));
 
 	return json(deck);

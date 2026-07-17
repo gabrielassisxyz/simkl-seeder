@@ -1,8 +1,15 @@
 import { simklConfig, type SimklConfig } from './env';
 
-export interface SimklRating {
-	imdb?: number;
-	simkl?: number;
+// Simkl nests each provider's score under `{ rating, votes }`, and sends runtime
+// as a human string like "2h 41m" — the raw shapes the mapping must normalise.
+export interface SimklRatingValue {
+	rating?: number;
+	votes?: number;
+}
+
+export interface SimklRatings {
+	imdb?: SimklRatingValue;
+	simkl?: SimklRatingValue;
 }
 
 export interface DiscoverItem {
@@ -10,8 +17,8 @@ export interface DiscoverItem {
 	poster?: string;
 	overview?: string;
 	release_date?: string;
-	runtime?: number;
-	ratings?: SimklRating;
+	runtime?: string;
+	ratings?: SimklRatings;
 	ids: {
 		simkl_id: number;
 	};

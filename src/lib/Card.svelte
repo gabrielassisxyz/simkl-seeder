@@ -65,6 +65,7 @@
 		type="button"
 		aria-label="Open details for {item.title}"
 		data-testid="open-modal"
+		data-no-drag
 		onclick={onOpenModal}
 	>
 		<div class="title-row">

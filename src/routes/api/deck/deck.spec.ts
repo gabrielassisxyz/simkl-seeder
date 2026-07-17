@@ -34,8 +34,8 @@ describe('GET /api/deck', () => {
 				poster: '54/5456742c5450c5ab4',
 				overview: 'First overview.',
 				release_date: '2022-06-15',
-				runtime: 125,
-				ratings: { simkl: 8.1, imdb: 7.2 },
+				runtime: '2h 5m',
+				ratings: { simkl: { rating: 8.1, votes: 100 }, imdb: { rating: 7.2, votes: 200 } },
 				ids: { simkl_id: 123 }
 			},
 			{
