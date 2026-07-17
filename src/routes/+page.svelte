@@ -161,6 +161,7 @@
 	.action:hover {
 		background: var(--surface);
 		color: var(--text);
+		transform: scale(1.06);
 	}
 
 	.action:active {

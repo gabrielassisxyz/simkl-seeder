@@ -36,7 +36,10 @@
 		--hairline: rgba(245, 244, 242, 0.1);
 		--radius-sm: 0.375rem;
 		--radius-md: 0.75rem;
-		--shadow-rest: 0 1px 0 rgba(0, 0, 0, 0.15) inset;
+		/* Depth from material + hairlines, not big shadows (per design taste) —
+		   these are deliberately shallower than a generic card shadow. */
+		--shadow-card: 0 10px 28px rgba(0, 0, 0, 0.26);
+		--shadow-modal: 0 16px 44px rgba(0, 0, 0, 0.4);
 		--font-display: 'Schibsted Grotesk', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 		--font-body: 'Schibsted Grotesk', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 	}
@@ -49,6 +52,17 @@
 
 	:global(html) {
 		color-scheme: dark;
+	}
+
+	/* One keyboard-focus convention for every interactive element: a single
+	   accent ring, shown only for keyboard users. */
+	:global(:focus-visible) {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	:global(:focus:not(:focus-visible)) {
+		outline: none;
 	}
 
 	:global(body) {

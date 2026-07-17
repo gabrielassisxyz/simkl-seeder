@@ -107,8 +107,7 @@
 	.backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.65);
-		backdrop-filter: blur(2px);
+		background: rgba(0, 0, 0, 0.68);
 		z-index: 50;
 	}
 
@@ -133,7 +132,15 @@
 		padding: clamp(1.25rem, 4vw, 2rem);
 		color: var(--text);
 		pointer-events: auto;
-		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+		box-shadow: var(--shadow-modal);
+	}
+
+	/* On a phone the sheet rises from the bottom edge (thumb-reachable); on a
+	   wider screen a bottom-anchored sheet reads odd, so center it. */
+	@media (min-width: 640px) {
+		.modal-root {
+			place-items: center;
+		}
 	}
 
 	.close {

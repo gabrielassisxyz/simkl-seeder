@@ -85,7 +85,7 @@
 		overflow: hidden;
 		background: var(--ground-elevated);
 		border: 1px solid var(--hairline);
-		box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-card);
 	}
 
 	.poster,
@@ -138,10 +138,17 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
-		padding: 1.25rem;
-		padding-bottom: 1rem;
-		background: var(--ground-elevated);
-		border-top: 1px solid var(--hairline);
+		/* Tall top padding so the scrim gradient has room to fade the poster out
+		   under the text — the title floats over the image, Tinder-style, instead
+		   of sitting in an opaque bar that hard-cuts the poster. */
+		padding: 3.75rem 1.25rem 1.15rem;
+		border: none;
+		background: linear-gradient(
+			to top,
+			rgba(23, 23, 26, 0.96) 0%,
+			rgba(23, 23, 26, 0.82) 38%,
+			rgba(23, 23, 26, 0) 100%
+		);
 		color: var(--text);
 		display: flex;
 		align-items: flex-end;
@@ -149,15 +156,6 @@
 		gap: 0.75rem;
 		text-align: left;
 		cursor: pointer;
-		transition: background 150ms ease-out;
-	}
-
-	.title-bar:hover {
-		background: var(--surface);
-	}
-
-	.title-bar:active {
-		background: var(--surface);
 	}
 
 	.title-row {
@@ -174,6 +172,9 @@
 		font-weight: 700;
 		line-height: 1.2;
 		letter-spacing: -0.02em;
+		/* Keeps the title legible where a bright poster reaches up into the
+		   translucent top of the scrim. */
+		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
 	}
 
 	.meta {
