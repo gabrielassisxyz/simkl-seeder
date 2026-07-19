@@ -111,7 +111,10 @@
 		font-size: 0.85rem;
 		font-weight: 500;
 		cursor: pointer;
-		transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
+		transition:
+			background 150ms ease-out,
+			border-color 150ms ease-out,
+			color 150ms ease-out;
 	}
 
 	.see-more:hover {
@@ -126,6 +129,7 @@
 		z-index: 1;
 		padding: 1.5rem;
 		padding-top: 1.25rem;
+		padding-bottom: 5rem;
 		display: flex;
 		align-items: flex-end;
 		background: var(--ground-elevated);
@@ -133,6 +137,7 @@
 		overflow-y: auto;
 		border-top: 1px solid var(--hairline);
 		animation: fade-in 180ms ease-out;
+		pointer-events: none;
 	}
 
 	.overview p {
