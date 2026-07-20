@@ -24,3 +24,16 @@ vite.config.ts.timestamp-*
 
 # Personal agent sandbox config (machine-specific absolute paths)
 .ai-jail
+
+# >>> repo-harness:gitignore-private-boundary >>>
+# Maintainer notes — not part of the project; they live in the private notes repo,
+# reachable through the `local` symlink. NO trailing slash on any path in this block:
+# a worktree materializes these paths as SYMLINKS, and a `foo/` pattern matches a real
+# directory only — the ignore then keeps working in the main tree and silently fails
+# in every worktree.
+/local
+
+# Environment secrets and the per-machine agent sandbox config.
+.env
+.ai-jail
+# <<< repo-harness:gitignore-private-boundary <<<
