@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# Manage isolated git worktrees — the mandatory way to do any work in this repo.
+#
+# WHY: this repo is worked on by many parallel agent sessions, and nothing tells one
+# session that another exists. Sharing the main tree means they clobber each other's
+# branches and lose each other's uncommitted files. The rule (AGENTS.md §Conventions)
+# is structural: the main tree stays on the default branch as a clean reference, and
+# EVERY session works in its own worktree. This wraps the git plumbing so that is one
+# command, always branched off a FRESH origin/<default> — so nobody has to remember a
+# `git pull`, and a stale local default can never leak into new work.
+#
+#   worktree new <type>/<desc>   fetch origin, create a worktree + branch off origin/<default>
+#   worktree list                list worktrees (alias: ls)
+#   worktree status              per-worktree hygiene facts: dirty / unpushed / merged (alias: st)
+#   worktree rm <branch|task>    remove a worktree (git refuses if it has unsaved work; -f to force)
+#
+# Worktrees live OUTSIDE the repo, in ~/repositories/.worktrees/<repo>/<task>, so they
+# never pollute ~/repositories. Override the base dir with $WORKTREE_BASE.
+set -euo pipefail
+
+WORKTREE_BASE="${WORKTREE_BASE:-$HOME/repositories/.worktrees}"
+
+# Repo identity — works whether called from the main tree or from inside a worktree.
+# --git-common-dir points at the shared .../<repo>/.git even from a linked worktree.
+common="$(realpath "$(git rev-parse --git-common-dir)")"
+main_root="$(dirname "$common")"
+repo="$(basename "$main_root")"
+# `|| true`: under pipefail a missing origin/HEAD ref (a repo set up with `git init`
+# + `remote add` instead of a clone never has it) would abort the whole script here,
+# silently, before the fallback on the next line ever runs.
+def="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
+def="${def:-master}"
+
+slug() { printf '%s' "$1" | tr '/' '-'; }
+
+usage() {
+    cat >&2 <<EOF
+worktree — isolated worktrees for $repo (default branch: $def)
+
+  worktree new <type>/<desc>   fetch origin, create a worktree + branch off origin/$def
+  worktree list                list worktrees (alias: ls)
+  worktree status              per-worktree hygiene: dirty / unpushed / merged (alias: st)
+  worktree rm <branch|task>    remove a worktree (-f to force past unsaved work)
+
+Worktrees live in $WORKTREE_BASE/$repo/<task>.
+EOF
+}
+
+# Ignored-but-needed paths, symlinked from the main tree into every new worktree.
+#
+# WHY at all: `git worktree add` materializes only TRACKED files, so a fresh worktree starts
+# without any of these. The failure is silent — the session simply works without the file and
+# never learns it existed (an agent with no AGENTS.md, a deploy with no credentials, a
+# maintainer's backlog that reads as empty).
+#
+# WHY symlink, never copy: a copy diverges. Edit the copy in the worktree and the main tree
+# keeps the old value, so the next session reads stale config. One file, many views.
+#
+# WHY a per-repo file and not a hardcoded array any more. The array carried a note saying to
+# extract this file once either "a path only ONE project uses" or "more than 6 entries" became
+# true. The first condition tripped, so the fence did its job and this is the extraction it
+# asked for. The defaults below still apply to a repo with no `.worktree-links`, so nothing
+# regresses for the repos that never needed one.
+WORKTREE_LINKS_DEFAULT=(local .ai-jail config/deploy.env .env)
+WORKTREE_LINKS_FILE=".worktree-links"
+
+# Read the repo's link list: one path per line, `#` comments and blanks ignored.
+read_worktree_links() {
+    local file="$main_root/$WORKTREE_LINKS_FILE" line
+    if [ ! -f "$file" ]; then
+        printf '%s\n' "${WORKTREE_LINKS_DEFAULT[@]}"
+        return 0
+    fi
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"
+        line="$(printf '%s' "$line" | tr -d '[:space:]')"
+        [ -n "$line" ] && printf '%s\n' "$line"
+    done < "$file"
+}
+
+# Link each existing WORKTREE_LINKS path from the main tree into the new worktree.
+# Absolute targets: these links are git-ignored and never leave this machine, so a machine
+# path here costs nothing and survives the worktree being moved.
+# Link one path, descending into it when the worktree already has something there.
+#
+# WHY descend instead of skipping. A listed directory can be MIXED: mostly ignored, but
+# with a stray tracked file inside. `git worktree add` materializes that file, so the
+# directory exists, and a plain "already there, skip" then silently drops every ignored
+# sibling — in one repo that was one tracked plan next to 58 ignored ones, the most
+# valuable directory in the repo. Descending links the missing children instead,
+# and a tracked file still wins its own name because only a missing path is ever linked.
+link_path() {
+    local src="$1" dst="$2" rel="$3" child
+    if [ ! -e "$dst" ]; then
+        mkdir -p "$(dirname "$dst")"
+        ln -s "$src" "$dst"
+        linked+=("$rel")
+        return 0
+    fi
+    # Only two real directories can be merged. A symlink or a file at dst is left alone:
+    # it is either already linked or a tracked file, and neither may be shadowed.
+    [ -d "$src" ] && [ -d "$dst" ] && [ ! -L "$dst" ] || return 0
+    shopt -s nullglob dotglob
+    for child in "$src"/*; do
+        link_path "$child" "$dst/${child##*/}" "$rel/${child##*/}"
+    done
+    shopt -u nullglob dotglob
+    return 0
+}
+
+# A link the repo's .gitignore does not cover is UNTRACKED in the worktree, so a `git add -A`
+# there stages it — committing a symlink whose target is an absolute path on one machine,
+# useless to anyone else and near-invisible in review until it lands. That already happened
+# twice, in two different repos, and both times the cause was identical: the
+# ignore pattern was written `path/`, and a trailing slash matches a real directory and NEVER
+# a symlink. So the pattern keeps working in the main tree and silently fails in every
+# worktree — which is exactly why nobody notices. The check costs one `check-ignore` per link,
+# and it is the only thing that makes the invariant hold in a repo nobody has audited yet.
+verify_links_ignored() {
+    local dir="$1"; shift
+    local rel
+    local -a leaked=()
+    for rel in "$@"; do
+        git -C "$dir" check-ignore -q "$rel" || leaked+=("$rel")
+    done
+    [ ${#leaked[@]} -gt 0 ] || return 0
+
+    echo >&2
+    echo "ERROR: these links are NOT git-ignored here — a \`git add -A\` would commit them:" >&2
+    printf '  %s\n' "${leaked[@]}" >&2
+    echo >&2
+    echo "Fix $main_root/.gitignore: the pattern covering each path above must have NO" >&2
+    echo "trailing slash (\`foo\`, not \`foo/\`). A trailing slash matches a real directory" >&2
+    echo "only, so it silently stops matching once the path becomes a symlink." >&2
+    echo >&2
+    echo "The worktree exists and is usable at $dir — only the ignore rules need fixing." >&2
+    return 1
+}
+
+link_ignored() {
+    local dir="$1" rel
+    local -a linked=()
+    while IFS= read -r rel; do
+        [ -e "$main_root/$rel" ] || continue
+        link_path "$main_root/$rel" "$dir/$rel" "$rel"
+    done < <(read_worktree_links)
+    [ ${#linked[@]} -gt 0 ] || return 0
+    echo "==> linked from the main tree: ${linked[*]}"
+    verify_links_ignored "$dir" "${linked[@]}"
+}
+
+cmd_new() {
+    local branch="${1:-}"
+    [ -n "$branch" ] || { echo "usage: worktree new <type>/<desc>" >&2; exit 2; }
+    local task dir
+    task="$(slug "$branch")"
+    dir="$WORKTREE_BASE/$repo/$task"
+    [ -e "$dir" ] && { echo "worktree already exists: $dir" >&2; exit 1; }
+    echo "==> fetching origin/$def (so the branch starts fresh) ..."
+    git fetch --quiet origin "$def"
+    mkdir -p "$WORKTREE_BASE/$repo"
+    # --no-track: branch off a fresh origin/<default> WITHOUT adopting it as upstream. A new
+    # feature branch has no remote of its own until `git push -u`; leaving upstream unset is
+    # what lets `status` flag it "no-remote" (unbacked work) instead of comparing to master.
+    git worktree add --no-track -b "$branch" "$dir" "origin/$def"
+    link_ignored "$dir"
+    echo
+    echo "worktree ready — enter it with:"
+    echo "  cd $dir"
+}
+
+cmd_list() { git worktree list; }
+
+cmd_status() {
+    echo "==> refreshing origin/$def ..." >&2
+    git fetch --quiet origin "$def" 2>/dev/null || true
+    printf '%-34s %-26s %s\n' "BRANCH" "WORKTREE" "STATE"
+    local wt ref br state ahead
+    while IFS=$'\t' read -r wt ref; do
+        br="${ref#refs/heads/}"
+        state=""
+        [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] && state="$state dirty"
+        if git -C "$wt" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+            ahead="$(git -C "$wt" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+            [ "$ahead" -gt 0 ] && state="$state unpushed"
+        else
+            ahead="$(git -C "$wt" rev-list --count "origin/$def..HEAD" 2>/dev/null || echo 0)"
+            [ "$ahead" -gt 0 ] && state="$state no-remote"
+        fi
+        git merge-base --is-ancestor "$br" "origin/$def" 2>/dev/null && state="$state merged"
+        [ "$br" = "$def" ] && state="$state [main-ref]"
+        [ -z "$state" ] && state=" clean"
+        printf '%-34s %-26s %s\n' "$br" "$(basename "$wt")" "${state# }"
+    done < <(git worktree list --porcelain | awk '/^worktree /{wt=$2} /^branch /{print wt"\t"$2}')
+}
+
+cmd_rm() {
+    local key="" force=""
+    local a
+    for a in "$@"; do
+        case "$a" in
+            -f|--force) force=1 ;;
+            *) key="$a" ;;
+        esac
+    done
+    [ -n "$key" ] || { echo "usage: worktree rm <branch|task> [-f]" >&2; exit 2; }
+    local dir
+    dir="$WORKTREE_BASE/$repo/$(slug "$key")"
+    [ -d "$dir" ] || { echo "no worktree at $dir" >&2; exit 1; }
+
+    # Everything tracked lives in the object store and survives this. Git-ignored files
+    # do NOT: `git worktree remove` checks for dirty and untracked content but ignores
+    # ignored paths entirely, so it deletes them without a word, with or without -f.
+    # A real file was lost this way. Anything symlinked from the main tree is safe (only
+    # the link goes), so the ones worth stopping for are the ignored NON-symlinks.
+    local at_risk=()
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        [ -L "$dir/$rel" ] && continue
+        at_risk+=("$rel")
+    done < <(git -C "$dir" ls-files --others --ignored --exclude-standard --directory 2>/dev/null)
+
+    if [ ${#at_risk[@]} -gt 0 ]; then
+        echo "WARNING: these git-ignored paths exist only in this worktree and will be destroyed:" >&2
+        printf '  %s\n' "${at_risk[@]}" >&2
+        echo >&2
+        echo "Nothing tracked is at risk — only these. Move what matters out, or add the path to" >&2
+        echo "$WORKTREE_LINKS_FILE so future worktrees link it from the main tree instead." >&2
+        if [ -z "$force" ]; then
+            echo "Refusing to remove. Re-run with -f once you have looked." >&2
+            exit 1
+        fi
+    fi
+
+    # Drop the symlinks this tool created before handing over to git. They are
+    # untracked by definition, so git counts them as "modified or untracked files" and
+    # refuses every removal — which would make `rm` require -f in EVERY worktree, and a
+    # flag that is always required is a flag that stops being read. Removing a symlink
+    # only removes the link; the target in the main tree is untouched.
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        [ -L "$dir/$rel" ] && rm -f "$dir/$rel"
+    done < <(read_worktree_links)
+
+    if [ -n "$force" ]; then
+        git worktree remove --force "$dir"
+    else
+        git worktree remove "$dir"
+    fi
+    echo "removed $dir"
+}
+
+case "${1:-}" in
+    new)          shift; cmd_new "$@" ;;
+    list|ls)      cmd_list ;;
+    status|st)    cmd_status ;;
+    rm|remove)    shift; cmd_rm "$@" ;;
+    ""|-h|--help) usage ;;
+    *)            echo "unknown subcommand: $1" >&2; usage; exit 2 ;;
+esac

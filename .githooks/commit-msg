@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Refuse a commit message that credits an AI assistant as a contributor.
+#
+# WHY a hook and not a rule. This invariant was already written down — it is the
+# opening section of the global agent config, the most prominent rule there is — and
+# it was still violated in published history, twice. Prominence is not enforcement: a
+# per-commit rule whose only check is a model reading it has a failure rate above
+# zero, so over enough commits it will break. The cost of catching it here is a
+# rejected commit; the cost of catching it after a push is a force-push or a deleted
+# repository, because history is not editable once it is public.
+#
+# WHY it names one assistant. The trailer is emitted by one tool's default commit
+# template, so a narrow pattern catches the real source. It deliberately does NOT
+# match bots in general: `Co-authored-by: dependabot[bot]` is legitimate and appears
+# in merge commits already in this history. A gate that fires on a dependency bump is
+# a gate that gets disabled on the first false positive, and a disabled gate protects
+# nothing.
+set -euo pipefail
+
+msg_file="${1:?commit-msg hook requires the message file}"
+
+# Comment lines are stripped by git before the message is stored, so a match inside
+# one is a false positive — most obviously the commented diff `--verbose` appends.
+body="$(grep -v '^#' "$msg_file" || true)"
+
+violations="$(printf '%s\n' "$body" | grep -n -i -E \
+    -e 'co-authored-by:.*(claude|anthropic)' \
+    -e 'assisted-by:.*(claude|anthropic)' \
+    -e 'generated with.*claude' \
+    -e '🤖' \
+    || true)"
+
+[ -z "$violations" ] && exit 0
+
+cat >&2 <<EOF
+commit rejected: the message credits an AI assistant.
+
+$violations
+
+Commits are authored by the human, with their own name and address — that field is
+correct and needs no change. What must not appear anywhere in the message is an
+assistant as co-author, an "Assisted-by" trailer, or a generated-with signature.
+
+Remove the line(s) above and commit again. If this is a false positive (a commit
+that is genuinely *about* attribution, quoting the pattern), bypass once with:
+  git commit --no-verify
+EOF
+exit 1

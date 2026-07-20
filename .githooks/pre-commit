@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deterministic secret gate: block a commit that stages a secret. The AGENTS.md
-# spec is a probabilistic reminder the model may forget; this hook never forgets.
+# Deterministic gate: block a staged secret from ever reaching a commit.
+# The probabilistic counterpart (show `git diff --cached` before commit) lives in
+# AGENTS.md — this hook is the trava that survives forgetting.
 set -euo pipefail
 
 if ! command -v gitleaks >/dev/null 2>&1; then
-	echo "ERROR: gitleaks not installed — commits are unguarded." >&2
-	echo "Install: https://github.com/gitleaks/gitleaks  (Arch: pacman -S gitleaks)" >&2
-	exit 1
+    echo "gitleaks not installed — see https://github.com/gitleaks/gitleaks" >&2
+    exit 1
 fi
 
-gitleaks protect --staged --redact --no-banner
+gitleaks protect --staged --no-banner
