@@ -9,13 +9,21 @@
 # rejected commit; the cost of catching it after a push is a force-push or a deleted
 # repository, because history is not editable once it is public.
 #
-# WHY it names one assistant. The trailer is emitted by one tool's default commit
-# template, so a narrow pattern catches the real source. It deliberately does NOT
+# WHY it names assistants explicitly. The trailer is emitted by an assistant's default
+# commit template, so naming them catches the real source. It deliberately does NOT
 # match bots in general: `Co-authored-by: dependabot[bot]` is legitimate and appears
 # in merge commits already in this history. A gate that fires on a dependency bump is
 # a gate that gets disabled on the first false positive, and a disabled gate protects
-# nothing.
+# nothing. So the list grows one assistant at a time, never into a generic `.*bot`.
+#
+# WHY more than one name. The rule is about crediting *any* assistant, but the gate
+# long matched only one — so the same trailer from a different CLI passed straight
+# through. A rule enforced for one tool and not its neighbour is not enforced.
 set -euo pipefail
+
+# Anchored to attribution contexts (`co-authored-by:`, `assisted-by:`, `generated with`)
+# so prose *about* these tools — which this repo is full of — never trips the gate.
+assistants='claude|anthropic|codex|openai|chatgpt|gpt|gemini|copilot'
 
 msg_file="${1:?commit-msg hook requires the message file}"
 
@@ -24,11 +32,24 @@ msg_file="${1:?commit-msg hook requires the message file}"
 body="$(grep -v '^#' "$msg_file" || true)"
 
 violations="$(printf '%s\n' "$body" | grep -n -i -E \
-    -e 'co-authored-by:.*(claude|anthropic)' \
-    -e 'assisted-by:.*(claude|anthropic)' \
-    -e 'generated with.*claude' \
+    -e "co-authored-by:.*($assistants)" \
+    -e "assisted-by:.*($assistants)" \
+    -e "reported-by:.*($assistants)" \
+    -e "generated with.*($assistants)" \
     -e '🤖' \
     || true)"
+
+# The prose gate, where the repo opted into one. A commit message is the one published
+# text no later check can reach: bin/ci sees the tree and the PR job sees the PR, but
+# nothing reads the message again, and rewriting it after a push costs a force-push.
+#
+# The opt-in signal is bin/ci calling the guard, not the script merely being present:
+# llm-workflow carries the canonical source without running it on itself, and keying off
+# the file would block every commit in the one repo whose prose uses em-dashes by
+# design. Repos that never opted in reach neither branch.
+if [ -x bin/slop-guard ] && grep -q 'slop-guard' bin/ci 2>/dev/null; then
+    printf '%s\n' "$body" | bin/slop-guard --stdin "commit message" >/dev/null || exit 1
+fi
 
 [ -z "$violations" ] && exit 0
 

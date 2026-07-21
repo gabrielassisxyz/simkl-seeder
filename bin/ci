@@ -17,6 +17,6 @@ echo "==> dependency audit (fail on high/critical)"
 npm audit --audit-level=high
 
 # anti-slop gate: em-dash in prose + the tool-name leak. Canonical: llm-workflow bin/slop-guard.
-echo "==> slop-guard"; bin/slop-guard
+echo "==> slop-guard"; bin/slop-guard --diff "${SLOP_GUARD_BASE:-origin/master}"
 
 echo "OK: bin/ci green"

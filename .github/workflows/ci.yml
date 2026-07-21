@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # bin/ci runs the prose gate, which resolves a merge base to find the
+          # lines this branch adds. A shallow clone has no base commit to reach.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -22,7 +26,10 @@ jobs:
       # Component tests run in a real browser (vitest-browser-svelte).
       - run: npx playwright install --with-deps chromium
 
-      - run: ./bin/ci
+      - env:
+          # Empty on a push, where the fallback (origin/master) is the right base anyway.
+          SLOP_GUARD_BASE: ${{ github.event.pull_request.base.sha }}
+        run: ./bin/ci
 
   # Deterministic secret scan over full history, independent of the local hook.
   gitleaks:
@@ -35,15 +42,3 @@ jobs:
         env:
           # Required by gitleaks-action@v2 to scan pull_request events.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # The PR title and body never touch the git tree, so the same gate runs over them here.
-  slop-guard-pr:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          TITLE: ${{ github.event.pull_request.title }}
-          BODY: ${{ github.event.pull_request.body }}
-        run: |
-          printf '%s\n%s\n' "$TITLE" "$BODY" | bin/slop-guard --stdin "PR text"

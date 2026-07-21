@@ -17,20 +17,54 @@
 # the de-slopify review skill; this file only carries what a grep can settle.
 #
 # Usage:
-#   bin/slop-guard              scan the working tree: Markdown prose for em-dashes, all
-#                               tracked text for the tool name, and the current branch
+#   bin/slop-guard              scan the working tree: every tracked text file for
+#                               em-dashes and for the tool name, plus the current branch
 #                               name. Exit 1 on any hit. This is what bin/ci calls.
-#   bin/slop-guard --stdin LBL  read stdin as text labelled LBL (e.g. "PR body") and
-#                               apply the same two checks. For a CI step over a PR's
-#                               title/body, which never touch the git tree.
+#   bin/slop-guard --stdin LBL  read stdin as text labelled LBL (e.g. "PR body",
+#                               "commit message") and apply the same two checks. For a
+#                               CI step over a PR's title/body and for the commit-msg
+#                               hook, neither of which touches the git tree.
+#   bin/slop-guard --diff BASE  scan only the lines this branch ADDS since BASE (a ref:
+#                               origin/master, a PR's base sha). Same two checks, same
+#                               stripping — only the verdict is narrowed.
 #
-# A line carrying the marker `allow-emdash` (as an HTML comment) opts that one line out
-# of the em-dash check, for the rare place a real em-dash belongs.
+# WHY a diff mode exists, and why the tree scan is still the default. A repo that adopts
+# this gate with prose already written is red from the first run and stays red: the gate
+# is installed, never passes, and stops being read — the failure mode of every signal
+# that never changes state. --diff makes it a ratchet instead: green today, and from
+# today on a new em-dash cannot land. The existing debt stays visible in the tree scan
+# and gets paid when someone touches that file anyway. A repo that starts clean (a fresh
+# public delivery) wants the opposite — zero tolerance over the whole tree, forever — so
+# it keeps the default and never passes a flag. One script, two postures, chosen by the
+# caller rather than baked in.
+#
+# --diff still reads each changed file WHOLE, then keeps only the hits that fall on an
+# added line. Fences, inline code and the generated block are file-level context: judging
+# a bare `+` line would flag an em-dash inside a code block, which is content, not prose.
+#
+# The em-dash scan covers source and config, not only Markdown: a dash worn as a habit
+# in a Kotlin comment or a YAML key reads exactly like one in a README, and the first
+# version of this gate missed both because it only looked at *.md.
+#
+# What it deliberately does NOT scan is content this repo did not author: the harness
+# files installed byte-identical from the drift contract (bin/worktree, the git hooks,
+# the .gitignore boundary block) and the generated universal-principles block inside an
+# AGENTS.md. Those are agent tooling, not the delivered artifact, and their canonical
+# source is somewhere else — flagging them would ask every repo to edit a file it is
+# contractually required to keep identical.
+#
+# A line carrying the marker `allow-emdash` opts that one line out of the em-dash check,
+# for the rare place a real em-dash belongs.
 set -euo pipefail
 
 EMDASH=$'—'
 HATCH='allow-emdash'
 NAME_RE='de-?slop'   # de-slop / deslop / de-slopify, case-insensitive
+
+# Files whose content is installed from the drift contract, byte-identical, and whose
+# canonical source lives in llm-workflow. Listed by path because the target repo has no
+# copy of the manifest to read.
+MANAGED='bin/slop-guard bin/worktree bin/install-hooks .githooks/pre-commit .githooks/commit-msg .gitignore .worktree-links'
 
 # Report every line that still holds an em-dash after fenced blocks (``` and ~~~, which
 # also covers ```mermaid) and inline code spans are removed, since a dash inside code is
@@ -38,7 +72,10 @@ NAME_RE='de-?slop'   # de-slop / deslop / de-slopify, case-insensitive
 # is read from FILENAME so the same program serves a file operand or stdin ("-").
 # shellcheck disable=SC2016  # this is an awk program; its $-vars must stay unexpanded
 emdash_prog='
-    FNR == 1        { fence = 0 }
+    FNR == 1        { fence = 0; generated = 0 }
+    /BEGIN universal-principles/ { generated = 1 }
+    /END universal-principles/   { generated = 0; next }
+    generated       { next }
     /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
     fence           { next }
     index($0, hatch) { next }
@@ -77,18 +114,99 @@ fi
 cd "$(dirname "$0")/.."
 self="bin/slop-guard"
 
-# 1. em-dash in Markdown prose
-while IFS= read -r f; do
-    hits="$(scan_emdash "$f")"
-    [ -z "$hits" ] || { printf '%s\n' "$hits"; fail=1; }
-done < <(git ls-files '*.md' '*.mdx')
+BASE=''
+if [ "${1:-}" = "--diff" ]; then
+    [ -n "${2:-}" ] || { echo "slop-guard: --diff needs a base ref (e.g. origin/master)" >&2; exit 2; }
+    # A base that cannot be resolved is a hard error, never a pass. The whole value of
+    # this mode is that it stays green, so a silent fallback to "nothing to scan" would
+    # be indistinguishable from a real pass — the gate would report OK for the rest of
+    # its life. In CI the usual cause is a shallow checkout: the base commit is simply
+    # not in the clone unless the job asks for history (`fetch-depth: 0`).
+    if ! BASE="$(git merge-base "$2" HEAD 2>/dev/null)" || [ -z "$BASE" ]; then
+        cat >&2 <<EOF
+slop-guard: cannot resolve a merge base between '$2' and HEAD, so there is no set of
+added lines to check. This is a failure, not a pass.
 
-# 2. the tool named in any tracked text. This script is skipped: it must hold the
-#    pattern to test for it. -I skips binary files; -H always prints the path.
+  - in GitHub Actions: the checkout is shallow by default — add \`fetch-depth: 0\` to
+    the actions/checkout step, and pass \${{ github.event.pull_request.base.sha }}
+  - locally: \`git fetch origin\` first, then pass a ref that exists (origin/master)
+EOF
+        exit 2
+    fi
+fi
+
+is_managed() {
+    case " $MANAGED " in (*" $1 "*) return 0 ;; esac
+    return 1
+}
+
+# The files to look at: everything tracked, or — in diff mode — only what changed since
+# BASE. Deletions and their old paths are excluded (ACMR), since a line that no longer
+# exists cannot carry a tell.
+target_files() {
+    if [ -n "$BASE" ]; then
+        git diff --name-only --diff-filter=ACMR "$BASE"
+    else
+        git ls-files
+    fi
+}
+
+# The line numbers this branch ADDS to $1, read from the hunk headers of a zero-context
+# diff (`@@ -a,b +c,d @@`; an absent `d` means a single line).
+added_lines() {
+    git diff -U0 "$BASE" -- "$1" | awk '
+        /^@@/ {
+            split($3, h, ",")
+            start = substr(h[1], 2) + 0
+            count = (h[2] == "" ? 1 : h[2] + 0)
+            for (i = 0; i < count; i++) print start + i
+        }'
+}
+
+# Keep only the `<file>:<n>: …` hits landing on an added line. The known path prefix is
+# stripped by length before the number is read, so a colon inside a filename is harmless.
+keep_added() {  # $1 = the file the hits belong to, $2 = file holding the added line numbers
+    awk -v prefix="$1:" -v setfile="$2" '
+        BEGIN { while ((getline n < setfile) > 0) added[n] = 1 }
+        {
+            rest = substr($0, length(prefix) + 1)
+            num = rest
+            sub(/:.*/, "", num)
+            if (num in added) print
+        }'
+}
+
+if [ -n "$BASE" ]; then
+    added_set="$(mktemp)"
+    trap 'rm -f "$added_set"' EXIT
+fi
+
+# 1. em-dash in any text the repo actually authors. `grep -Iq ''` is the binary filter:
+#    -I makes grep treat a binary file as non-matching, so a jar or a PNG is skipped
+#    instead of being fed to awk. The file is always read whole — diff mode narrows the
+#    verdict afterwards, so fenced blocks are still recognised as fenced.
+while IFS= read -r f; do
+    is_managed "$f" && continue
+    grep -Iq '' "$f" 2>/dev/null || continue
+    hits="$(scan_emdash "$f")"
+    if [ -n "$BASE" ]; then
+        added_lines "$f" > "$added_set"
+        hits="$(printf '%s' "$hits" | keep_added "$f" "$added_set")"
+    fi
+    [ -z "$hits" ] || { printf '%s\n' "$hits"; fail=1; }
+done < <(target_files)
+
+# 2. the tool named in the text. This script is skipped: it must hold the pattern to test
+#    for it. -I skips binary files; -H always prints the path.
 while IFS= read -r f; do
     [ "$f" = "$self" ] && continue
-    if grep -nHEiI -- "$NAME_RE" "$f" 2>/dev/null; then fail=1; fi
-done < <(git ls-files)
+    hits="$(grep -nHEiI -- "$NAME_RE" "$f" 2>/dev/null || true)"
+    if [ -n "$BASE" ] && [ -n "$hits" ]; then
+        added_lines "$f" > "$added_set"
+        hits="$(printf '%s' "$hits" | keep_added "$f" "$added_set")"
+    fi
+    [ -z "$hits" ] || { printf '%s\n' "$hits"; fail=1; }
+done < <(target_files)
 
 # 3. the current branch name (best-effort; a detached HEAD, as in some CI, is skipped)
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
@@ -97,5 +215,10 @@ if [ "$branch" != HEAD ] && printf '%s' "$branch" | grep -qEi -- "$NAME_RE"; the
     fail=1
 fi
 
-[ "$fail" -eq 0 ] || { echo "==> slop-guard FAILED" >&2; exit 1; }
-echo "==> slop-guard OK"
+# Naming the posture in the verdict: "OK" over a whole tree and "OK" over five added
+# lines are very different claims, and the reader cannot see the flag from the log.
+scope="whole tree"
+[ -z "$BASE" ] || scope="lines added since ${2}"
+
+[ "$fail" -eq 0 ] || { echo "==> slop-guard FAILED ($scope)" >&2; exit 1; }
+echo "==> slop-guard OK ($scope)"
