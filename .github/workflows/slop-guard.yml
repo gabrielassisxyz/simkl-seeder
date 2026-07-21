@@ -1,0 +1,30 @@
+name: slop-guard
+
+# The prose gate has its own workflow because of `types: edited`. The default
+# pull_request types cover pushes, not text edits, so a job that only reruns on a push
+# reads that event's payload and keeps judging the title and body as they stood at the
+# last push: a corrected body still fails, and a body edited afterwards to add a tell
+# passes. `edited` fixes that, but it fires on every text edit, and no expensive job
+# should pay for a typo fix. Hence a separate file instead of widening ci.yml's trigger.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  slop-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # --diff resolves a merge base, which a shallow clone does not contain.
+          fetch-depth: 0
+      - name: PR title and body
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n%s\n' "$TITLE" "$BODY" | bin/slop-guard --stdin "PR text"
+      - name: lines this PR adds
+        run: bin/slop-guard --diff "${{ github.event.pull_request.base.sha }}"
