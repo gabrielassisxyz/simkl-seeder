@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# slop-guard — a deterministic gate against two machine-checkable AI-slop tells reaching
+# a public repo:
+#   1. the em-dash (U+2014) worn as a prose habit, and
+#   2. the de-slopping tool named in committed text (a branch, commit, doc, or comment).
+#
+# Canonical source lives in llm-workflow (bin/slop-guard) and is copied byte-identical
+# into each public deliverable repo that opts in. llm-workflow does NOT run it on
+# itself: its own prose uses em-dashes and names the tool by design, so the gate lives
+# here only as the source, never in this repo's own bin/ci.
+#
+# Why a gate and not only the review skill: a naming leak already shipped once, on a
+# delivery branch whose name showed on the repo home page, precisely the kind of thing a
+# human reviewing under a deadline misses. A grep decides it every time. The em-dash is
+# the single most reliable machine-checkable tell once code fences and inline code
+# (where a dash is content, not prose) are removed. Everything softer stays judgment for
+# the de-slopify review skill; this file only carries what a grep can settle.
+#
+# Usage:
+#   bin/slop-guard              scan the working tree: Markdown prose for em-dashes, all
+#                               tracked text for the tool name, and the current branch
+#                               name. Exit 1 on any hit. This is what bin/ci calls.
+#   bin/slop-guard --stdin LBL  read stdin as text labelled LBL (e.g. "PR body") and
+#                               apply the same two checks. For a CI step over a PR's
+#                               title/body, which never touch the git tree.
+#
+# A line carrying the marker `allow-emdash` (as an HTML comment) opts that one line out
+# of the em-dash check, for the rare place a real em-dash belongs.
+set -euo pipefail
+
+EMDASH=$'—'
+HATCH='allow-emdash'
+NAME_RE='de-?slop'   # de-slop / deslop / de-slopify, case-insensitive
+
+# Report every line that still holds an em-dash after fenced blocks (``` and ~~~, which
+# also covers ```mermaid) and inline code spans are removed, since a dash inside code is
+# content, not prose. Prints "<loc>:<n>: em-dash in prose". `loc` labels the source and
+# is read from FILENAME so the same program serves a file operand or stdin ("-").
+# shellcheck disable=SC2016  # this is an awk program; its $-vars must stay unexpanded
+emdash_prog='
+    FNR == 1        { fence = 0 }
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence           { next }
+    index($0, hatch) { next }
+    {
+        line = $0
+        gsub(/`[^`]*`/, "", line)
+        if (index(line, dash))
+            print (loc == "" ? FILENAME : loc) ":" FNR ": em-dash in prose"
+    }
+'
+
+scan_emdash() {  # $1 = file path, or "-" for stdin with $2 as the label
+    if [ "$1" = "-" ]; then
+        awk -v dash="$EMDASH" -v hatch="$HATCH" -v loc="$2" "$emdash_prog"
+    else
+        awk -v dash="$EMDASH" -v hatch="$HATCH" -v loc="" "$emdash_prog" "$1"
+    fi
+}
+
+fail=0
+
+if [ "${1:-}" = "--stdin" ]; then
+    label="${2:-stdin}"
+    text="$(cat)"
+    hits="$(printf '%s' "$text" | scan_emdash - "$label")"
+    [ -z "$hits" ] || { printf '%s\n' "$hits" >&2; fail=1; }
+    if printf '%s' "$text" | grep -qEi -- "$NAME_RE"; then
+        echo "$label names the de-slopping tool, which must never appear in a public repo" >&2
+        fail=1
+    fi
+    [ "$fail" -eq 0 ] || { echo "==> slop-guard FAILED ($label)" >&2; exit 1; }
+    echo "==> slop-guard OK ($label)"
+    exit 0
+fi
+
+cd "$(dirname "$0")/.."
+self="bin/slop-guard"
+
+# 1. em-dash in Markdown prose
+while IFS= read -r f; do
+    hits="$(scan_emdash "$f")"
+    [ -z "$hits" ] || { printf '%s\n' "$hits"; fail=1; }
+done < <(git ls-files '*.md' '*.mdx')
+
+# 2. the tool named in any tracked text. This script is skipped: it must hold the
+#    pattern to test for it. -I skips binary files; -H always prints the path.
+while IFS= read -r f; do
+    [ "$f" = "$self" ] && continue
+    if grep -nHEiI -- "$NAME_RE" "$f" 2>/dev/null; then fail=1; fi
+done < <(git ls-files)
+
+# 3. the current branch name (best-effort; a detached HEAD, as in some CI, is skipped)
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+if [ "$branch" != HEAD ] && printf '%s' "$branch" | grep -qEi -- "$NAME_RE"; then
+    echo "branch name '$branch' names the de-slopping tool" >&2
+    fail=1
+fi
+
+[ "$fail" -eq 0 ] || { echo "==> slop-guard FAILED" >&2; exit 1; }
+echo "==> slop-guard OK"

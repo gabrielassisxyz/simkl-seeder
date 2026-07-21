@@ -35,3 +35,15 @@ jobs:
         env:
           # Required by gitleaks-action@v2 to scan pull_request events.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The PR title and body never touch the git tree, so the same gate runs over them here.
+  slop-guard-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n%s\n' "$TITLE" "$BODY" | bin/slop-guard --stdin "PR text"
