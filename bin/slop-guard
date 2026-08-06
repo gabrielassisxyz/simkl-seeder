@@ -64,7 +64,12 @@ NAME_RE='de-?slop'   # de-slop / deslop / de-slopify, case-insensitive
 # Files whose content is installed from the drift contract, byte-identical, and whose
 # canonical source lives in llm-workflow. Listed by path because the target repo has no
 # copy of the manifest to read.
-MANAGED='bin/slop-guard bin/worktree bin/install-hooks .githooks/pre-commit .githooks/commit-msg .gitignore .worktree-links'
+#
+# scripts/md-unwrap.py earns its place the hard way: a repo that installs both gates
+# fails on the first run, because the copied script's own prose uses em-dashes and the
+# only fixes available to that repo are editing a file it must keep identical, or
+# switching the gate off.
+MANAGED='bin/slop-guard bin/worktree bin/install-hooks .githooks/pre-commit .githooks/commit-msg .gitignore .worktree-links scripts/md-unwrap.py'
 
 # Report every line that still holds an em-dash after fenced blocks (``` and ~~~, which
 # also covers ```mermaid) and inline code spans are removed, since a dash inside code is
