@@ -33,7 +33,13 @@ vite.config.ts.timestamp-*
 # in every worktree.
 /local
 
-# Environment secrets and the per-machine agent sandbox config.
+# Environment secrets and the per-machine agent sandbox config. `.env.*` covers the
+# variants a real session produces — `.env.local`, and above all the `.env.bak.<epoch>`
+# an editor or a script leaves behind. One of those sat untracked in a repo for weeks:
+# the pre-commit secret scan only reads what is staged, so a secret nobody stages is a
+# secret nobody scans, and `.env` alone does not match it.
 .env
+.env.*
+!.env.example
 .ai-jail
 # <<< repo-harness:gitignore-private-boundary <<<
