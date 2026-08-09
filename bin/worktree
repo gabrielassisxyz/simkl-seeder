@@ -11,7 +11,8 @@
 #
 #   worktree new <type>/<desc>   fetch origin, create a worktree + branch off origin/<default>
 #   worktree list                list worktrees (alias: ls)
-#   worktree status              per-worktree hygiene facts: dirty / unpushed / merged (alias: st)
+#   worktree status [--strays]   per-worktree hygiene facts: dirty / unpushed / merged; --strays
+#                                 also lists merged branches with no worktree, local and remote (alias: st)
 #   worktree rm <branch|task>    remove a worktree (git refuses if it has unsaved work; -f to force)
 #
 # Worktrees live OUTSIDE the repo, in ~/repositories/.worktrees/<repo>/<task>, so they
@@ -30,6 +31,12 @@ repo="$(basename "$main_root")"
 # silently, before the fallback on the next line ever runs.
 def="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
 def="${def:-master}"
+# Spelled out rather than `origin/$def`, because that short form is a DWIM name and a
+# tag literally named `origin/master` outranks the remote-tracking ref in git's
+# resolution order. The ambiguity warning is swallowed by the `2>/dev/null` every
+# merge-base call here carries, so an unmerged branch measured against such a tag
+# comes back `merged` — silently, and in the dangerous direction of the two.
+def_ref="refs/remotes/origin/$def"
 
 slug() { printf '%s' "$1" | tr '/' '-'; }
 
@@ -39,7 +46,8 @@ worktree — isolated worktrees for $repo (default branch: $def)
 
   worktree new <type>/<desc>   fetch origin, create a worktree + branch off origin/$def
   worktree list                list worktrees (alias: ls)
-  worktree status              per-worktree hygiene: dirty / unpushed / merged (alias: st)
+  worktree status [--strays]   per-worktree hygiene: dirty / unpushed / merged; --strays also
+                                lists merged branches with no worktree (alias: st)
   worktree rm <branch|task>    remove a worktree (-f to force past unsaved work)
 
 Worktrees live in $WORKTREE_BASE/$repo/<task>.
@@ -171,27 +179,210 @@ cmd_new() {
 
 cmd_list() { git worktree list; }
 
+# True if $1 matches one of the remaining args — used to skip a branch already
+# printed as a worktree row when the branch-only scan below walks refs/heads.
+contains() {
+    local needle="$1" straw
+    shift
+    for straw in "$@"; do
+        [ "$straw" = "$needle" ] && return 0
+    done
+    return 1
+}
+
+# State for a branch with no worktree, computed the same way a worktree row's state
+# is: `unpushed`/`no-remote` against its upstream (or origin/$def with none), plus
+# `merged`. There is no working tree to be `dirty`, and unlike a worktree row this
+# must never fall through empty to the `clean` default below — a branch with nothing
+# pointing at it reading as `clean` is exactly backwards, and the case that would
+# fall through empty (unmerged, but already fully pushed to its own upstream) is
+# reachable. refs/heads/$br, not the bare name, so a same-named tag can never be
+# what merge-base or rev-list actually resolves.
+no_worktree_state() {
+    local br="$1" state="" ahead
+    if git rev-parse --abbrev-ref --symbolic-full-name "$br@{u}" >/dev/null 2>&1; then
+        ahead="$(git rev-list --count "$br@{u}..refs/heads/$br" 2>/dev/null || echo 0)"
+        [ "$ahead" -gt 0 ] && state="$state unpushed"
+    else
+        ahead="$(git rev-list --count "$def_ref..refs/heads/$br" 2>/dev/null || echo 0)"
+        [ "$ahead" -gt 0 ] && state="$state no-remote"
+    fi
+    git merge-base --is-ancestor "refs/heads/$br" "$def_ref" 2>/dev/null && state="$state merged"
+    [ -z "$state" ] && state=" unmerged"
+    printf '%s' "${state# }"
+}
+
 cmd_status() {
+    local strays=""
+    if [ $# -gt 0 ]; then
+        # Anything but exactly `--strays` is a usage error, not a quiet no-op:
+        # `--stray` (the singular typo) used to print the default table and exit 0,
+        # which answers "are there strays?" with silence — indistinguishable from
+        # "none".
+        [ "$1" = "--strays" ] && [ $# -eq 1 ] || { echo "usage: worktree status [--strays]" >&2; exit 2; }
+        strays=1
+    fi
+
     echo "==> refreshing origin/$def ..." >&2
-    git fetch --quiet origin "$def" 2>/dev/null || true
+    # --prune: the branch scan below reads refs/remotes/origin/* directly, and the
+    # single-branch fetch above never refreshed or pruned that namespace. Without a
+    # prune, a branch already deleted on the origin still has a stale remote-tracking
+    # ref here and gets reported as a leftover to delete — measured 3 stale-of-157
+    # refs in this repo — and the delete command this tool would print for it fails.
+    # A prune only rewrites remote-tracking refs, the same category of write as the
+    # fetch already here, not a new exception to "status is read-only".
+    git fetch --prune --quiet origin 2>/dev/null || true
+
     printf '%-34s %-26s %s\n' "BRANCH" "WORKTREE" "STATE"
     local wt ref br state ahead
+    local -a wt_branches=()
+
+    # `merged` — everything below — means "is an ancestor of origin/$def", so without
+    # that ref the branch scan cannot tell a leftover from unbacked work and would
+    # call every branch at-risk (a repo made with `git init` + `remote add`, same case
+    # the origin/HEAD fallback above already has to allow for). Skip the whole scan
+    # and say so, rather than print a table that looks complete and is not.
+    local have_def_remote=1
+    git rev-parse --verify --quiet "$def_ref" >/dev/null 2>&1 || have_def_remote=""
+    [ -n "$have_def_remote" ] || echo "==> no refs/remotes/origin/$def — branch scan skipped, mergedness unknowable" >&2
+
+    # The full set of branches merged on the origin, keyed by their real name via
+    # `lstrip=3` rather than `:short` — `:short` abbreviates only as far as stays
+    # unambiguous, so a branch that shares a name with a tag comes back as
+    # `heads/<name>`/`origin/<name>` and matches nothing below, up to and including
+    # the default branch itself. `lstrip=3` also makes origin/HEAD arrive as the
+    # literal `HEAD` instead of shortening to the bare string `origin`, which is what
+    # actually made the old `HEAD` guard fire — by accident, not by design.
+    local -A remote_merged=()
+    local -A remote_absorbed=()
+    if [ -n "$have_def_remote" ]; then
+        while IFS= read -r br; do
+            [ "$br" = "HEAD" ] && continue
+            [ "$br" = "$def" ] && continue
+            git merge-base --is-ancestor "refs/remotes/origin/$br" "$def_ref" 2>/dev/null \
+                && remote_merged["$br"]=1
+        done < <(git for-each-ref --format='%(refname:lstrip=3)' --sort=refname refs/remotes/origin)
+    fi
+
     while IFS=$'\t' read -r wt ref; do
         br="${ref#refs/heads/}"
+        wt_branches+=("$br")
         state=""
         [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] && state="$state dirty"
         if git -C "$wt" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
             ahead="$(git -C "$wt" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
             [ "$ahead" -gt 0 ] && state="$state unpushed"
         else
-            ahead="$(git -C "$wt" rev-list --count "origin/$def..HEAD" 2>/dev/null || echo 0)"
+            ahead="$(git -C "$wt" rev-list --count "$def_ref..HEAD" 2>/dev/null || echo 0)"
             [ "$ahead" -gt 0 ] && state="$state no-remote"
         fi
-        git merge-base --is-ancestor "$br" "origin/$def" 2>/dev/null && state="$state merged"
+        # refs/heads/$br, not the bare name: a same-named tag would otherwise be what
+        # merge-base actually resolves, and a genuinely unmerged branch could print
+        # `merged` because the tag it collides with happens to sit on origin/$def.
+        git merge-base --is-ancestor "refs/heads/$br" "$def_ref" 2>/dev/null && state="$state merged"
         [ "$br" = "$def" ] && state="$state [main-ref]"
+        # A merged branch is not necessarily an orphan: `origin/<branch>` can still be
+        # sitting there, and deleting it is a step nobody has taken yet. A second row
+        # would violate "one branch, one row", so the fact is folded into this one
+        # instead of being dropped — `merged +origin` is the line that says both
+        # deletions (local worktree already gone would be one thing; here the origin
+        # ref) are still pending.
+        if [ -n "${remote_merged[$br]:-}" ]; then
+            state="$state +origin"
+            remote_absorbed["$br"]=1
+        fi
         [ -z "$state" ] && state=" clean"
         printf '%-34s %-26s %s\n' "$br" "$(basename "$wt")" "${state# }"
     done < <(git worktree list --porcelain | awk '/^worktree /{wt=$2} /^branch /{print wt"\t"$2}')
+
+    if [ -z "$have_def_remote" ]; then
+        return 0
+    fi
+
+    # A local branch with no worktree is invisible above — the blind spot this
+    # command exists to close (a branch survived a full hygiene pass in another repo
+    # because nothing ever counted it, see the change that added this block).
+    # Unmerged means unbacked work with nothing pointing at it, so it prints inline
+    # unconditionally; merged means a leftover with no urgency, counted here and
+    # listed only under --strays. `lstrip=2` for the same tag-collision reason as the
+    # remote scan above.
+    local -a local_strays=()
+    local st
+    while IFS= read -r br; do
+        [ "$br" = "$def" ] && continue
+        contains "$br" "${wt_branches[@]}" && continue
+        if git merge-base --is-ancestor "refs/heads/$br" "$def_ref" 2>/dev/null; then
+            local_strays+=("$br")
+        else
+            st="$(no_worktree_state "$br")"
+            if [ -n "${remote_merged[$br]:-}" ]; then
+                st="$st +origin"
+                remote_absorbed["$br"]=1
+            fi
+            printf '%-34s %-26s %s\n' "$br" "no worktree" "$st"
+        fi
+    done < <(git for-each-ref --format='%(refname:lstrip=2)' --sort=refname refs/heads)
+
+    if [ -n "$strays" ]; then
+        for br in "${local_strays[@]}"; do
+            st="$(no_worktree_state "$br")"
+            if [ -n "${remote_merged[$br]:-}" ]; then
+                st="$st +origin"
+                remote_absorbed["$br"]=1
+            fi
+            printf '%-34s %-26s %s\n' "$br" "no worktree" "$st"
+        done
+        # Whatever is left in remote_merged with no absorption has no local ref at
+        # all — the everyday case is the remote branch of a PR nobody ever deletes
+        # after merge. Sorted explicitly: associative-array key order is unspecified.
+        # Guarded on non-empty: `printf '%s\n'` with zero args still emits one blank
+        # line, so an empty remote_merged would otherwise feed a single empty string
+        # into remote_sorted, and indexing an associative array with it is a fatal
+        # bash error — in a tidy repo, exactly the case this command must not crash on.
+        if [ ${#remote_merged[@]} -gt 0 ]; then
+            local -a remote_sorted=()
+            mapfile -t remote_sorted < <(printf '%s\n' "${!remote_merged[@]}" | sort)
+            for br in "${remote_sorted[@]}"; do
+                [ -n "${remote_absorbed[$br]:-}" ] && continue
+                printf '%-34s %-26s %s\n' "origin/$br" "no worktree" "merged"
+            done
+        fi
+    fi
+
+    # The remote count is a statement about the origin, so it is the full size of
+    # remote_merged — every branch merged there, deduplicated rows included — not
+    # the number of standalone rows `--strays` prints. A dedup that simply skipped
+    # branches with a local counterpart made this line say "92 merged on origin" in
+    # this repo when the true count was 120; that is a false statement about the
+    # origin, which is the exact blind spot this command exists to close. Silent
+    # when both counts are zero: a repo with nothing to report prints exactly what
+    # it always has.
+    if [ ${#local_strays[@]} -gt 0 ] || [ ${#remote_merged[@]} -gt 0 ]; then
+        printf "  %d merged local branches with no worktree, %d merged on origin — \`worktree status --strays\` to list\n" \
+            "${#local_strays[@]}" "${#remote_merged[@]}"
+    fi
+}
+
+# The path a worktree still holds a branch at, and whether git already calls that
+# registration prunable — or both empty if no registration holds it at all. The
+# filesystem is not the record: `rm -rf` on a worktree directory does not deregister
+# it, git keeps a `prunable` entry, and `git branch -d/-D` still refuses with "cannot
+# delete branch 'x' used by worktree at <path>" regardless of merge status. The same
+# is true, minus the `prunable` marker, for a branch simply checked out in a worktree
+# that lives outside $WORKTREE_BASE, where the derived $dir was never going to exist.
+worktree_holding() {
+    local want="refs/heads/$1" wt br pr
+    while IFS=$'\t' read -r wt br pr; do
+        [ "$br" = "$want" ] || continue
+        printf '%s\t%s' "$wt" "$pr"
+        return 0
+    done < <(git worktree list --porcelain | awk '
+        /^worktree /{ if (wt != "") print wt "\t" br "\t" pr; wt = substr($0, 10); br = ""; pr = "" }
+        /^branch /{ br = $2 }
+        /^prunable/{ pr = "1" }
+        END{ if (wt != "") print wt "\t" br "\t" pr }
+    ')
+    return 1
 }
 
 cmd_rm() {
@@ -206,7 +397,63 @@ cmd_rm() {
     [ -n "$key" ] || { echo "usage: worktree rm <branch|task> [-f]" >&2; exit 2; }
     local dir
     dir="$WORKTREE_BASE/$repo/$(slug "$key")"
-    [ -d "$dir" ] || { echo "no worktree at $dir" >&2; exit 1; }
+    # "no worktree at $dir" was always true and always a dead end: the branch a
+    # session actually cares about (a stray worktree got removed by hand, a handoff
+    # named a branch whose worktree was already gone) still exists and this told
+    # nobody. Report it instead of just the absence, but delete nothing — this
+    # command's job is removing worktrees, not branches.
+    if [ ! -d "$dir" ]; then
+        if git show-ref --verify --quiet "refs/heads/$key"; then
+            local holder="" holder_pr=""
+            # `|| true` on both: no registration holding the branch means the
+            # process substitution prints nothing, and `read` hitting EOF with no
+            # line to read exits nonzero — under `set -e` that would abort the whole
+            # command instead of leaving holder/holder_pr empty, which is a valid,
+            # common outcome here, not an error.
+            IFS=$'\t' read -r holder holder_pr < <(worktree_holding "$key" || true) || true
+
+            local mergedness="not merged into $def"
+            # refs/heads/$key, not the bare $key: a same-named tag would otherwise be
+            # what merge-base actually resolves, and the branch would silently be
+            # reported as unmerged regardless of its real state.
+            git merge-base --is-ancestor "refs/heads/$key" "$def_ref" 2>/dev/null && mergedness="merged into $def"
+
+            if [ -n "$holder" ]; then
+                # A suggestion that cannot work is worse than the dead end it
+                # replaced — the dead end at least did not send anyone down a wrong
+                # path. `git branch -D` fails here no matter what this says, so say
+                # what actually has to happen first. Mergedness is stated in every
+                # shape: it is the fact that decides whether any of this is worth
+                # doing, and it does not depend on who holds the branch.
+                if [ -n "$holder_pr" ]; then
+                    echo "no worktree at $dir — but a stale (prunable) registration still holds branch '$key' ($mergedness) at $holder" >&2
+                    echo "  first: git worktree prune" >&2
+                elif [ "$holder" = "$main_root" ] || [ "$(realpath "$holder" 2>/dev/null || printf '%s' "$holder")" = "$main_root" ]; then
+                    # The main tree cannot be removed at all — git answers `fatal:
+                    # '<path>' is a main working tree` — so suggesting it would be
+                    # the same dead end in a new costume. Checking it out elsewhere
+                    # is what actually frees the branch.
+                    echo "no worktree at $dir — but branch '$key' ($mergedness) is checked out in the MAIN tree: $holder" >&2
+                    echo "  first: check out another branch there — git refuses to remove a main working tree" >&2
+                else
+                    echo "no worktree at $dir — but branch '$key' ($mergedness) is checked out in another worktree: $holder" >&2
+                    printf '  first: git worktree remove %q\n' "$holder" >&2
+                fi
+                printf '  then: git branch -D %q\n' "$key" >&2
+                exit 1
+            fi
+
+            # %q: a branch name may legally contain shell metacharacters
+            # (`chore/foo;uname` passes `git check-ref-format`), and this line is a
+            # command someone will paste. Quoting it is what makes pasting it delete
+            # the branch and run nothing else.
+            echo "no worktree at $dir — but local branch '$key' exists, $mergedness" >&2
+            printf '  to delete it: git branch -D %q\n' "$key" >&2
+            exit 1
+        fi
+        echo "no worktree at $dir" >&2
+        exit 1
+    fi
 
     # Everything tracked lives in the object store and survives this. Git-ignored files
     # do NOT: `git worktree remove` checks for dirty and untracked content but ignores
@@ -253,7 +500,7 @@ cmd_rm() {
 case "${1:-}" in
     new)          shift; cmd_new "$@" ;;
     list|ls)      cmd_list ;;
-    status|st)    cmd_status ;;
+    status|st)    shift; cmd_status "$@" ;;
     rm|remove)    shift; cmd_rm "$@" ;;
     ""|-h|--help) usage ;;
     *)            echo "unknown subcommand: $1" >&2; usage; exit 2 ;;
