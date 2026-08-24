@@ -11,15 +11,22 @@
 #
 #   worktree new <type>/<desc>   fetch origin, create a worktree + branch off origin/<default>
 #   worktree list                list worktrees (alias: ls)
-#   worktree status [--strays]   per-worktree hygiene facts: dirty / unpushed / merged; --strays
+#   worktree status [--strays]   per-worktree hygiene facts: dirty / unpushed / merged / behind N; --strays
 #                                 also lists merged branches with no worktree, local and remote (alias: st)
 #   worktree rm <branch|task>    remove a worktree (git refuses if it has unsaved work; -f to force)
+#   worktree adopt <path>        link the repo's git-ignored paths into an existing worktree
 #
 # Worktrees live OUTSIDE the repo, in ~/repositories/.worktrees/<repo>/<task>, so they
 # never pollute ~/repositories. Override the base dir with $WORKTREE_BASE.
 set -euo pipefail
 
 WORKTREE_BASE="${WORKTREE_BASE:-$HOME/repositories/.worktrees}"
+
+# Where harness/fragments/cargo-build-root.sh looks for the build disk, before falling back
+# to ${TMPDIR:-/tmp}. Overridable, same reason WORKTREE_BASE is: a test needs to drive the
+# fallback branch without depending on whether /mnt/build happens to exist on the machine
+# the suite runs on.
+CARGO_BUILD_ROOT_PROBE="${CARGO_BUILD_ROOT_PROBE:-/mnt/build}"
 
 # Repo identity — works whether called from the main tree or from inside a worktree.
 # --git-common-dir points at the shared .../<repo>/.git even from a linked worktree.
@@ -30,7 +37,34 @@ repo="$(basename "$main_root")"
 # + `remote add` instead of a clone never has it) would abort the whole script here,
 # silently, before the fallback on the next line ever runs.
 def="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)"
-def="${def:-master}"
+if [ -z "$def" ]; then
+    # `refs/remotes/origin/HEAD` is written by `clone` and by nothing else, so a repo built
+    # with `git init` + `remote add` never has it. This used to fall straight to `master`,
+    # which in a `main` repo printed a banner saying `master` and then reached for a ref
+    # that does not exist — the failure lands after the banner has already said otherwise.
+    # So ask what the remote actually carries before assuming anything.
+    found=""; n=0
+    for cand in main master; do
+        if git rev-parse --verify --quiet "refs/remotes/origin/$cand" >/dev/null 2>&1; then
+            found="$cand"; n=$(( n + 1 ))
+        fi
+    done
+    if [ "$n" -eq 1 ]; then
+        def="$found"                      # unambiguous: infer silently, that is the point
+    elif [ "$n" -eq 0 ]; then
+        # No remote branch to measure against at all (a remote never pushed to, or none).
+        # HEAD is the only honest answer left, and it is still a guess, so say so.
+        def="$(git symbolic-ref --short HEAD 2>/dev/null || echo master)"
+        printf 'worktree: origin/HEAD is unset and origin carries neither main nor master.\n' >&2
+        printf "worktree: assuming '%s', taken from the current checkout.\n" "$def" >&2
+        printf 'worktree: fix it once with: git remote set-head origin -a\n' >&2
+    else
+        def=main
+        printf 'worktree: origin/HEAD is unset and origin carries BOTH main and master.\n' >&2
+        printf "worktree: assuming 'main' — this is a guess and may be the wrong one.\n" >&2
+        printf 'worktree: fix it once with: git remote set-head origin -a\n' >&2
+    fi
+fi
 # Spelled out rather than `origin/$def`, because that short form is a DWIM name and a
 # tag literally named `origin/master` outranks the remote-tracking ref in git's
 # resolution order. The ambiguity warning is swallowed by the `2>/dev/null` every
@@ -40,15 +74,66 @@ def_ref="refs/remotes/origin/$def"
 
 slug() { printf '%s' "$1" | tr '/' '-'; }
 
+# Same rule as harness/fragments/cargo-build-root.sh:50-55: build somewhere on the fast
+# disk if it is mounted, else fall back to $TMPDIR/tmp. The task slug is what the fragment
+# derives from `basename "$PWD"` at build time, and `basename "$PWD"` of a worktree created
+# by `cmd_new` IS the task slug — so this needs no bookkeeping of its own to stay in sync.
+cargo_target_dir_for() {
+    local task="$1" build_root="$CARGO_BUILD_ROOT_PROBE"
+    [ -d "$build_root" ] || build_root="${TMPDIR:-/tmp}"
+    printf '%s/cargo-target-worktrees/%s' "$build_root" "$task"
+}
+
+# The path above is keyed on the slug alone, not on the repo — so two repos with a
+# worktree of the same slug share one cargo target directory. True today of any OTHER
+# worktree still on disk under $WORKTREE_BASE, in any repo, once the one being removed is
+# already gone. A directory match is treated as a live worktree without asking git,
+# because only `cmd_new`/`git worktree add` ever create $WORKTREE_BASE/<repo>/<task>.
+cargo_target_collision() {
+    local task="$1" d
+    for d in "$WORKTREE_BASE"/*/"$task"; do
+        [ -d "$d" ] || continue
+        return 0
+    done
+    return 1
+}
+
+# Delete the cargo target this worktree's slug maps to, called only after `git worktree
+# remove` has already succeeded. Two things make the derived path untrustworthy rather than
+# just absent, and both are reasons to leave it alone instead of guessing: an explicit
+# CARGO_TARGET_DIR in this shell's environment means the fragment never ran the derivation
+# above in the first place, and a same-slug worktree still on disk elsewhere means the
+# directory is still live for someone else. A directory that is simply missing (any
+# non-Rust repo) is the common case and stays silent — this only speaks when there is
+# something to report.
+remove_cargo_target() {
+    local task="$1" target size
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        echo "cargo target: CARGO_TARGET_DIR is set in this shell — the derived path would be a guess, leaving it alone" >&2
+        return 0
+    fi
+    target="$(cargo_target_dir_for "$task")"
+    [ -d "$target" ] || return 0
+    if cargo_target_collision "$task"; then
+        echo "cargo target: another live worktree also maps to slug '$task' — leaving $target in place" >&2
+        return 0
+    fi
+    size="$(du -sh "$target" 2>/dev/null | cut -f1)"
+    rm -rf "$target"
+    echo "removed cargo target: $target${size:+ ($size reclaimed)}"
+}
+
 usage() {
     cat >&2 <<EOF
 worktree — isolated worktrees for $repo (default branch: $def)
 
   worktree new <type>/<desc>   fetch origin, create a worktree + branch off origin/$def
   worktree list                list worktrees (alias: ls)
-  worktree status [--strays]   per-worktree hygiene: dirty / unpushed / merged; --strays also
+  worktree status [--strays]   per-worktree hygiene: dirty / unpushed / merged / behind N; --strays also
                                 lists merged branches with no worktree (alias: st)
   worktree rm <branch|task>    remove a worktree (-f to force past unsaved work)
+  worktree adopt <path>        link the repo's git-ignored paths into an existing worktree
+  worktree prune-merged [--yes] delete merged branches with no worktree (lists them without --yes)
 
 Worktrees live in $WORKTREE_BASE/$repo/<task>.
 EOF
@@ -105,9 +190,15 @@ link_path() {
         linked+=("$rel")
         return 0
     fi
-    # Only two real directories can be merged. A symlink or a file at dst is left alone:
-    # it is either already linked or a tracked file, and neither may be shadowed.
-    [ -d "$src" ] && [ -d "$dst" ] && [ ! -L "$dst" ] || return 0
+    # A symlink or a file at dst is left alone: it is either already linked or a
+    # tracked file, and neither may be shadowed. A real directory is also left alone
+    # as a whole — but its missing children are still linked, because a listed
+    # directory can be MIXED (mostly ignored, with a stray tracked file inside).
+    if [ -L "$dst" ] || [ ! -d "$dst" ] || [ ! -d "$src" ]; then
+        skipped+=("$rel")
+        return 0
+    fi
+    skipped+=("$rel")
     shopt -s nullglob dotglob
     for child in "$src"/*; do
         link_path "$child" "$dst/${child##*/}" "$rel/${child##*/}"
@@ -147,14 +238,52 @@ verify_links_ignored() {
 
 link_ignored() {
     local dir="$1" rel
-    local -a linked=()
+    local -a linked=() skipped=()
     while IFS= read -r rel; do
         [ -e "$main_root/$rel" ] || continue
         link_path "$main_root/$rel" "$dir/$rel" "$rel"
     done < <(read_worktree_links)
+    [ ${#skipped[@]} -gt 0 ] && echo "==> left alone (already present): ${skipped[*]}"
     [ ${#linked[@]} -gt 0 ] || return 0
     echo "==> linked from the main tree: ${linked[*]}"
     verify_links_ignored "$dir" "${linked[@]}"
+}
+
+# Bring an existing worktree up to the shape `new` creates. A worktree made with a
+# plain `git worktree add` materializes only tracked files, so every git-ignored path
+# this repo links is absent — and the failure is silent until a gate trips on it. This
+# recreates the missing links in place, reusing the same link list and link_path() as
+# `new`, so the two can never drift apart. It never replaces or removes anything
+# already at a link path, and it refuses a path that is not a worktree of this repo.
+cmd_adopt() {
+    local dir="${1:-}"
+    [ -n "$dir" ] || { echo "usage: worktree adopt <path>" >&2; exit 2; }
+    dir="$(realpath -m -- "$dir")"
+    [ -d "$dir" ] || { echo "worktree: not a directory: $dir" >&2; exit 1; }
+
+    # Refuse anything that is not a registered worktree of THIS repo before creating
+    # a single link: scattering absolute symlinks into an arbitrary directory is
+    # exactly the damage a wrong path would do. `git worktree list` is the record —
+    # `git rev-parse --git-common-dir` alone cannot tell a worktree from a
+    # subdirectory of one, because it walks up to the same common dir.
+    local wt
+    while IFS= read -r wt; do
+        [ "$(realpath -m -- "$wt")" = "$dir" ] && { link_ignored "$dir"; return 0; }
+    done < <(git worktree list --porcelain | sed -n 's|^worktree ||p')
+
+    # Name the actual problem rather than just "no": a path with no git dir at all,
+    # a path in another repo, and a subdirectory of a worktree are three different
+    # mistakes and three different fixes.
+    local wt_common
+    wt_common="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [ -z "$wt_common" ]; then
+        echo "worktree: $dir is not a git worktree of $repo (no .git directory)" >&2
+    elif [ "$(realpath -m -- "$wt_common")" != "$common" ]; then
+        echo "worktree: $dir is not a worktree of $repo (its git dir is $wt_common, not $common)" >&2
+    else
+        echo "worktree: $dir is inside $repo but is not a worktree root (run: git worktree list)" >&2
+    fi
+    exit 1
 }
 
 cmd_new() {
@@ -234,7 +363,7 @@ cmd_status() {
     git fetch --prune --quiet origin 2>/dev/null || true
 
     printf '%-34s %-26s %s\n' "BRANCH" "WORKTREE" "STATE"
-    local wt ref br state ahead
+    local wt ref br state ahead behind
     local -a wt_branches=()
 
     # `merged` — everything below — means "is an ancestor of origin/$def", so without
@@ -281,6 +410,19 @@ cmd_status() {
         # `merged` because the tag it collides with happens to sit on origin/$def.
         git merge-base --is-ancestor "refs/heads/$br" "$def_ref" 2>/dev/null && state="$state merged"
         [ "$br" = "$def" ] && state="$state [main-ref]"
+        # `new` branches off a FRESH origin/$def and then nothing ever mentions that the base
+        # aged. Measured: a worktree created at 13:59 off cc5b26a was 3 commits stale by
+        # 14:03 because a parallel session merged in between, and the session spent a commit
+        # re-fixing a file that PR had already fixed, then had to unwind the branch. Guarding
+        # against file collisions was never the whole job — this is the other half.
+        #
+        # Printed on every row that is behind, including `merged` ones. Suppressing it there
+        # looks tidier and is wrong: a worktree whose branch has no commits yet IS an ancestor
+        # of origin/$def, so it reads `merged`, and that is precisely the moment when acting
+        # on a stale base is cheapest. On the default-branch row it is the `git pull --ff-only`
+        # signal for the main tree.
+        behind="$(git -C "$wt" rev-list --count "HEAD..$def_ref" 2>/dev/null || echo 0)"
+        [ "$behind" -gt 0 ] && state="$state behind $behind"
         # A merged branch is not necessarily an orphan: `origin/<branch>` can still be
         # sitting there, and deleting it is a step nobody has taken yet. A second row
         # would violate "one branch, one row", so the fact is folded into this one
@@ -385,18 +527,53 @@ worktree_holding() {
     return 1
 }
 
+# How to get rid of a branch this command deliberately leaves alone, printed on stderr next
+# to the diagnosis that raised it.
+#
+# WHY not `git branch -D`, which is what every one of these lines used to say: the sandbox
+# the agent sessions run in blocks it — dcg rule `core.git:branch-force-delete` — and blocks
+# the safe `-d` spelling too, so the advice was unrunnable by the tool's main reader, while
+# the one route that does work went unmentioned. Verified with `dcg test`: both `git branch
+# -d` and `-D` come back BLOCKED, `bin/worktree prune-merged --yes` comes back ALLOWED.
+#
+# %q on the branch name: it may legally contain shell metacharacters (`chore/foo;uname`
+# passes `git check-ref-format`), and this line is a command someone will paste. Quoting is
+# what makes pasting it delete the branch and run nothing else.
+# $1 non-empty means merged.
+# Prints on stdout; the diagnostic callers redirect it, so the same wording serves both a
+# failure on stderr and the success report at the end of `rm`.
+delete_hint() {
+    if [ -n "$1" ]; then
+        printf '  delete it with: bin/worktree prune-merged --yes  (every merged branch with no worktree, this one included)\n'
+    else
+        printf '  unmerged, so nothing here will delete it: git branch -D %q is the only route, and it needs human approval\n' "$2"
+    fi
+}
+
 cmd_rm() {
     local key="" force=""
     local a
     for a in "$@"; do
         case "$a" in
             -f|--force) force=1 ;;
+            -h|--help)
+                cat >&2 <<EOF
+usage: worktree rm <branch|task> [-f]
+
+Removes a worktree (git refuses if it has unsaved work; -f to force past it).
+The worktree's cargo build cache under cargo-target-worktrees goes with it,
+unless another live worktree shares the same slug or CARGO_TARGET_DIR is set
+in this shell — either way it is left in place, not guessed at.
+EOF
+                exit 0
+                ;;
             *) key="$a" ;;
         esac
     done
     [ -n "$key" ] || { echo "usage: worktree rm <branch|task> [-f]" >&2; exit 2; }
-    local dir
-    dir="$WORKTREE_BASE/$repo/$(slug "$key")"
+    local task dir
+    task="$(slug "$key")"
+    dir="$WORKTREE_BASE/$repo/$task"
     # "no worktree at $dir" was always true and always a dead end: the branch a
     # session actually cares about (a stray worktree got removed by hand, a handoff
     # named a branch whose worktree was already gone) still exists and this told
@@ -412,11 +589,12 @@ cmd_rm() {
             # common outcome here, not an error.
             IFS=$'\t' read -r holder holder_pr < <(worktree_holding "$key" || true) || true
 
-            local mergedness="not merged into $def"
+            local mergedness="not merged into $def" merged=""
             # refs/heads/$key, not the bare $key: a same-named tag would otherwise be
             # what merge-base actually resolves, and the branch would silently be
             # reported as unmerged regardless of its real state.
-            git merge-base --is-ancestor "refs/heads/$key" "$def_ref" 2>/dev/null && mergedness="merged into $def"
+            git merge-base --is-ancestor "refs/heads/$key" "$def_ref" 2>/dev/null \
+                && { mergedness="merged into $def"; merged=1; }
 
             if [ -n "$holder" ]; then
                 # A suggestion that cannot work is worse than the dead end it
@@ -439,21 +617,22 @@ cmd_rm() {
                     echo "no worktree at $dir — but branch '$key' ($mergedness) is checked out in another worktree: $holder" >&2
                     printf '  first: git worktree remove %q\n' "$holder" >&2
                 fi
-                printf '  then: git branch -D %q\n' "$key" >&2
+                delete_hint "$merged" "$key" >&2
                 exit 1
             fi
 
-            # %q: a branch name may legally contain shell metacharacters
-            # (`chore/foo;uname` passes `git check-ref-format`), and this line is a
-            # command someone will paste. Quoting it is what makes pasting it delete
-            # the branch and run nothing else.
             echo "no worktree at $dir — but local branch '$key' exists, $mergedness" >&2
-            printf '  to delete it: git branch -D %q\n' "$key" >&2
+            delete_hint "$merged" "$key" >&2
             exit 1
         fi
         echo "no worktree at $dir" >&2
         exit 1
     fi
+
+    # Read before removal, because afterwards the worktree is gone and the branch name is not
+    # recoverable from the task name — slug() maps `/` to `-` and does not invert.
+    local held=""
+    held="$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
     # Everything tracked lives in the object store and survives this. Git-ignored files
     # do NOT: `git worktree remove` checks for dirty and untracked content but ignores
@@ -494,14 +673,111 @@ cmd_rm() {
     else
         git worktree remove "$dir"
     fi
+    # The directory this process may be standing in has just been unlinked, and
+    # `cd <worktree> && bin/worktree rm <task>` is the natural end-of-task shape, so it
+    # usually IS standing in it. git refuses to do anything at all from a cwd that no longer
+    # exists — `fatal: Unable to read current working directory`, exit 128, before a single
+    # ref is read — and the mergedness probe below swallows stderr and reads any nonzero
+    # exit as "not merged". A branch that was merged then got reported as the only thing
+    # left holding its commits, the session believed it and skipped prune-merged, and the
+    # NEXT session's `bin/ci` went red over a branch it had never touched. Land in the main
+    # tree instead: it is the same repository, it is guaranteed to exist, and it makes every
+    # command after this point immune to the same trap.
+    cd "$main_root"
     echo "removed $dir"
+    remove_cargo_target "$task"
+
+    # Removing the worktree leaves the branch, on purpose (the comment on prune-merged says
+    # why the two are separate). What was missing is anyone SAYING so: the documented
+    # end-of-task cycle ends here, so the leftover was discovered by the NEXT session, whose
+    # `bin/ci` went red over a branch it had never heard of — twice in one afternoon. The fact
+    # belongs at the end of the task, where the session that created the branch is still
+    # around, not in an unrelated gate later.
+    [ -n "$held" ] || return 0
+    if git merge-base --is-ancestor "refs/heads/$held" "$def_ref" 2>/dev/null; then
+        echo "branch '$held' is still local and merged into $def — bin/ci will flag it until it is gone"
+        delete_hint 1 "$held"
+    else
+        echo "branch '$held' is still local and not merged into $def — kept, it is the only thing left holding its commits"
+    fi
+}
+
+# Deleting the branches `status --strays` merely counted. It exists because the gate that
+# checks for them has to be able to name the command that fixes them — a hurdle whose fix
+# nobody can run is prose wearing a gate's clothes, and this repo's own classification rule
+# says so ("If the exact catching command cannot be named, the hurdle is not `ci`").
+#
+# `git branch -d` is the safety net and the reason this is allowed to be scripted at all:
+# it REFUSES to delete a branch that is not merged into HEAD's upstream. So even if the
+# merge-base scan below were wrong, the worst outcome is a refusal, never a lost commit.
+# `-D` is deliberately not offered.
+cmd_prune_merged() {
+    local yes="" check=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --yes|-y)  yes=1; shift ;;
+            --check)   check=1; shift ;;
+            *) echo "usage: worktree prune-merged [--yes|--check]" >&2; exit 2 ;;
+        esac
+    done
+    [ -n "$yes" ] && [ -n "$check" ] && { echo "worktree: --yes and --check are exclusive" >&2; exit 2; }
+
+    # --check is the gate's entry point, so it must not touch the network: a gate that
+    # fetches is a gate that fails offline, and this one runs on every bin/ci.
+    if [ -z "$check" ]; then
+        echo "==> refreshing $def_ref ..."
+        git fetch -q origin 2>/dev/null || true
+    fi
+    git rev-parse --verify --quiet "$def_ref" >/dev/null 2>&1 || {
+        echo "worktree: $def_ref does not exist — refusing to judge what is merged" >&2
+        exit 1
+    }
+
+    local -a wt_branches=()
+    while IFS= read -r b; do [ -n "$b" ] && wt_branches+=("$b"); done < <(
+        git worktree list --porcelain | sed -n 's|^branch refs/heads/||p')
+
+    local -a doomed=()
+    local br
+    while IFS= read -r br; do
+        [ "$br" = "$def" ] && continue
+        contains "$br" "${wt_branches[@]}" && continue   # a live worktree owns it
+        git merge-base --is-ancestor "refs/heads/$br" "$def_ref" 2>/dev/null && doomed+=("$br")
+    done < <(git for-each-ref --format='%(refname:lstrip=2)' --sort=refname refs/heads)
+
+    if [ ${#doomed[@]} -eq 0 ]; then
+        [ -n "$check" ] || echo "no merged branches without a worktree — nothing to prune"
+        return 0
+    fi
+
+    if [ -n "$check" ]; then
+        printf '%d merged branch(es) with no worktree were never deleted:\n' "${#doomed[@]}" >&2
+        printf '%s\n' "${doomed[@]}" | sed 's/^/  /' >&2
+        printf 'clear them with: bin/worktree prune-merged --yes\n' >&2
+        return 1
+    fi
+
+    printf '%s\n' "${doomed[@]}" | sed 's/^/  /'
+    if [ -z "$yes" ]; then
+        printf '\n%d merged branch(es) would be deleted. Re-run with --yes to do it.\n' "${#doomed[@]}"
+        return 0
+    fi
+
+    local failed=0
+    for br in "${doomed[@]}"; do
+        git branch -d "$br" >/dev/null 2>&1 || { echo "refused: $br" >&2; failed=$(( failed + 1 )); }
+    done
+    printf 'deleted %d, refused %d\n' "$(( ${#doomed[@]} - failed ))" "$failed"
+    [ "$failed" -eq 0 ]
 }
 
 case "${1:-}" in
-    new)          shift; cmd_new "$@" ;;
-    list|ls)      cmd_list ;;
-    status|st)    shift; cmd_status "$@" ;;
-    rm|remove)    shift; cmd_rm "$@" ;;
-    ""|-h|--help) usage ;;
-    *)            echo "unknown subcommand: $1" >&2; usage; exit 2 ;;
+    new)             shift; cmd_new "$@" ;;
+    list|ls)         cmd_list ;;
+    status|st)       shift; cmd_status "$@" ;;
+    rm|remove)       shift; cmd_rm "$@" ;;
+    adopt)           shift; cmd_adopt "$@" ;;
+    prune-merged)    shift; cmd_prune_merged "$@" ;;
+    ""|-h|--help)    usage ;;
+    *)               echo "unknown subcommand: $1" >&2; usage; exit 2 ;;
 esac
