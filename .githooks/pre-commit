@@ -10,3 +10,25 @@ if ! command -v gitleaks >/dev/null 2>&1; then
 fi
 
 gitleaks protect --staged --no-banner
+
+# Then any repo-local pre-commit plugin, in lexical order, aborting on the first refusal.
+#
+# WHY this dispatch exists rather than a second hook file: git runs exactly one
+# `pre-commit`, and this file is copied byte-identical into every repo under the drift
+# contract, so it is the only owner of that slot. A repo that needs a second check — an
+# agent swarm's file-reservation guard is the case that forced this — has nowhere to put
+# it, and the tool that installs such a guard solves that by OVERWRITING this file with a
+# dispatcher of its own. That is what happened in llmux: the guard plugin is on disk, the
+# dispatcher was replaced by the next contract sync, and the guard has silently checked
+# nothing since. A slot here means the two never compete for the file.
+#
+# The directory is normally absent, which is why this is a no-op almost everywhere. A
+# plugin is machine-generated and git-ignored where it exists; nothing in it is part of
+# the contract, and this loop deliberately makes no assumption about what a plugin does.
+hooks_d="$(git rev-parse --show-toplevel)/.githooks/hooks.d/pre-commit"
+if [ -d "$hooks_d" ]; then
+    for plugin in "$hooks_d"/*; do
+        [ -f "$plugin" ] && [ -x "$plugin" ] || continue
+        "$plugin" "$@"
+    done
+fi
