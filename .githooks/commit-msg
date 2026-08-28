@@ -51,9 +51,8 @@ if [ -x bin/slop-guard ] && grep -q 'slop-guard' bin/ci 2>/dev/null; then
     printf '%s\n' "$body" | bin/slop-guard --stdin "commit message" >/dev/null || exit 1
 fi
 
-[ -z "$violations" ] && exit 0
-
-cat >&2 <<EOF
+if [ -n "$violations" ]; then
+    cat >&2 <<EOF
 commit rejected: the message credits an AI assistant.
 
 $violations
@@ -64,6 +63,87 @@ assistant as co-author, an "Assisted-by" trailer, or a generated-with signature.
 
 Remove the line(s) above and commit again. If this is a false positive (a commit
 that is genuinely *about* attribution, quoting the pattern), bypass once with:
+  git commit --no-verify
+EOF
+    exit 1
+fi
+
+# WHY a bead id is required, and only when a claim is held. The marching-orders
+# template states the rule — "every commit message must name {BEAD_ID}. Nothing
+# correlates your work to this bead except that string" — and nothing enforces it.
+# Measured on master for 2026-08-25, 13 of 29 non-merge commits name no bead id, and
+# the audit that recovered the thread read the tree file by file. The trigger is a
+# held claim, not every commit: an ops baseline, a docs typo or a merge legitimately
+# serves no bead, and a gate that fires on correct work gets disabled on its first
+# false positive — the same reasoning the attribution check uses to refuse a generic
+# `.*bot`.
+#
+# WHY it fails open. If br is missing, the tracker is unreadable, or the query
+# errors, the commit proceeds. A gate that blocks work because the issue tracker is
+# unavailable is worse than the defect it prevents, and .beads/ is git-ignored, so a
+# worktree reaches it only through the links bin/worktree wires up.
+#
+# WHY the actor is resolved the way br resolves it. The assignee on a bead is the
+# agent identity ntm sets, not the git author — every commit here is authored by the
+# human regardless of which agent made it. Falling back through NTM_AGENT_NAME to
+# USER is the same order br's own claim path uses, so a bead claimed by
+# `br update --claim` is seen by the same name the hook asks for.
+actor="${AGENT_NAME:-${NTM_AGENT_NAME:-${USER:-}}}"
+[ -n "$actor" ] || exit 0
+
+# Merge commits are exempt: their message is generated and names no work of its own.
+case "$body" in
+    Merge\ *) exit 0 ;;
+esac
+
+command -v br >/dev/null 2>&1 || exit 0
+
+# WHY the guard before the query. br writes its lock files into the .beads/ it
+# finds beside the commit, so querying a repo with no tracker of its own would
+# materialise .write.lock and .br-db-write-*.lock in a tree that never had them.
+#
+# The test is the DATABASE, not the directory, and the difference is not
+# theoretical: an empty `.beads/` is exactly what a test fixture creates, and it
+# is invisible to `git status` only while it stays empty. Guarding on the
+# directory lets br run there and fill it, which is the failure this guard exists
+# to prevent — it left three assertions in scripts/bead-close-verified-test.sh
+# red on a clean checkout of master. A repo with no readable tracker reaches the
+# exit-0 path without br ever running in it.
+[ -f .beads/beads.db ] || exit 0
+
+held_ids="$(br list --status in_progress --assignee "$actor" --json 2>/dev/null \
+    | jq -r '(.issues // []) | map(.id) | join(", ")' 2>/dev/null)" || exit 0
+[ -n "$held_ids" ] || exit 0
+
+# WHY the ids are matched, not a prefix. held_ids is the list of beads the actor
+# holds in the repository being committed to, carrying that repository's own
+# prefix — lw- here, kernl- or arch- elsewhere. The check asks that the message
+# name one of those ids, each word-anchored so an id inside a longer word or URL
+# does not count as naming one. This hook runs in every repository on this
+# machine: a global core.hooksPath symlinks each repo's commit-msg to this file,
+# so a hardcoded prefix would reject a kernl commit for naming kernl-x48.
+pattern=""
+for id in $held_ids; do
+    id="${id%,}"
+    [ -n "$id" ] || continue
+    escaped="$(printf '%s' "$id" | sed 's/[^a-zA-Z0-9-]/\\&/g')"
+    if [ -n "$pattern" ]; then
+        pattern="$pattern|"
+    fi
+    pattern="$pattern\\b$escaped\\b"
+done
+if [ -n "$pattern" ] && printf '%s\n' "$body" | grep -q -E "$pattern"; then
+    exit 0
+fi
+
+cat >&2 <<EOF
+commit rejected: the message names no bead id, but you hold an in_progress bead.
+
+held: $held_ids
+
+Every commit message must name its bead id — "nothing correlates your work to this
+bead except that string." Add the id to the subject or body and commit again. If
+this is a false positive, bypass once with:
   git commit --no-verify
 EOF
 exit 1

@@ -20,7 +20,12 @@
 # never pollute ~/repositories. Override the base dir with $WORKTREE_BASE.
 set -euo pipefail
 
-WORKTREE_BASE="${WORKTREE_BASE:-$HOME/repositories/.worktrees}"
+# Resolve to the physical path immediately: agent sessions run under a shallow orch-home
+# whose $HOME/repositories is a symlink to the real one. A derived path that keeps the
+# symlink segment does not match the literal keys in ~/.pi/agent/trust.json, which causes
+# `pi -p -a` to silently exit 0 with a zero-byte log. $WORKTREE_BASE overrides skip this
+# resolution on purpose — the caller already owns the string and knows what it means.
+WORKTREE_BASE="${WORKTREE_BASE:-$(realpath -P "$HOME/repositories/.worktrees" 2>/dev/null || printf '%s' "$HOME/repositories/.worktrees")}"
 
 # Where harness/fragments/cargo-build-root.sh looks for the build disk, before falling back
 # to ${TMPDIR:-/tmp}. Overridable, same reason WORKTREE_BASE is: a test needs to drive the
