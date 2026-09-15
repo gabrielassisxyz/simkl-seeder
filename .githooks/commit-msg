@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Anchored to attribution contexts (`co-authored-by:`, `assisted-by:`, `generated with`)
 # so prose *about* these tools — which this repo is full of — never trips the gate.
-assistants='claude|anthropic|codex|openai|chatgpt|gpt|gemini|copilot'
+assistants='claude|anthropic|codex|openai|chatgpt|gpt|gemini|copilot|opencode|muse|deepseek'
 
 msg_file="${1:?commit-msg hook requires the message file}"
 
@@ -47,7 +47,18 @@ violations="$(printf '%s\n' "$body" | grep -n -i -E \
 # llm-workflow carries the canonical source without running it on itself, and keying off
 # the file would block every commit in the one repo whose prose uses em-dashes by
 # design. Repos that never opted in reach neither branch.
-if [ -x bin/slop-guard ] && grep -q 'slop-guard' bin/ci 2>/dev/null; then
+#
+# The pattern is 'bin/slop-guard' and not the bare name, because the bare name also
+# matches the guard's own TEST, its section heading and the comments around it. When
+# bin/ci gained scripts/slop-guard-test.sh on 2026-08-28 the gate switched itself on in
+# llm-workflow, and that is not a cosmetic difference here: the ops-log schema REQUIRES
+# an em-dash in every entry heading (scripts/ops-log-lint.py refuses ' - '), bin/oplog
+# embeds that heading in the body of its baseline commit, and this gate then refuses the
+# commit. The entry lands in the vault, the baseline re-accept does not, and the machine
+# reports a change that was written up as undocumented drift, which is the exact failure
+# bin/oplog's header says it exists to end. Between the two, this is not a repo where a
+# widened signal fails safe.
+if [ -x bin/slop-guard ] && grep -q 'bin/slop-guard' bin/ci 2>/dev/null; then
     printf '%s\n' "$body" | bin/slop-guard --stdin "commit message" >/dev/null || exit 1
 fi
 
@@ -83,12 +94,29 @@ fi
 # unavailable is worse than the defect it prevents, and .beads/ is git-ignored, so a
 # worktree reaches it only through the links bin/worktree wires up.
 #
-# WHY the actor is resolved the way br resolves it. The assignee on a bead is the
-# agent identity ntm sets, not the git author — every commit here is authored by the
-# human regardless of which agent made it. Falling back through NTM_AGENT_NAME to
-# USER is the same order br's own claim path uses, so a bead claimed by
-# `br update --claim` is seen by the same name the hook asks for.
-actor="${AGENT_NAME:-${NTM_AGENT_NAME:-${USER:-}}}"
+# WHY the actor comes from one resolver rather than from a fallback chain written here.
+# The assignee on a bead is the agent identity, not the git author — every commit here is
+# authored by the human regardless of which agent made it. This line used to end in
+# `${USER:-}`, and on a machine where every session runs under one login that made every
+# session the same actor: one session claimed a bead, a different session holding nothing
+# committed unrelated work, and the hook rejected it for holding the first session's bead.
+# Measured 2026-08-28, six beads were held under the bare login, each blocking every other
+# session's commits for as long as it stayed in progress — and the rejection below names
+# `--no-verify`, so a gate firing on correct work teaches its own bypass.
+#
+# bin/actor-id is now the single resolver both this hook and every claim path call, so the
+# reader and the writer can no longer disagree. It never returns the login: when it cannot
+# identify the worker it fails, and this hook reads that as "no worker identity here" and
+# lets the commit through. That is also what makes a bead assigned to the bare login
+# harmless — the query below never asks for that assignee, so such a bead is no evidence
+# about this commit and cannot reject it.
+#
+# Resolved through the hook's REAL path because a global core.hooksPath symlinks every
+# repo's commit-msg to this one file: a relative lookup would miss in every repo but this.
+# If the resolver is absent, the commit proceeds, the same fail-open doctrine as below.
+resolver="$(cd "$(dirname "$(readlink -f "$0")")/../bin" 2>/dev/null && pwd -P)/actor-id"
+[ -x "$resolver" ] || exit 0
+actor="$("$resolver" 2>/dev/null)" || exit 0
 [ -n "$actor" ] || exit 0
 
 # Merge commits are exempt: their message is generated and names no work of its own.

@@ -18,4 +18,14 @@ chmod +x .githooks/*
 git config notes.rewriteRef refs/notes/sessions
 git config notes.rewriteMode overwrite
 
+# The landing configuration the origin check reads before any push or merge this repository's
+# tools make (scripts/origin-check.sh). A missing file refuses every landing, on any repository,
+# by design, so it is installed here, in the one step every clone already runs, rather than
+# left to a by-hand step some machine or session skips. The installer never overwrites.
+# Conditional because this file is copied byte-identical into every repository under the
+# harness contract, and only one of them ships the installer; elsewhere the step is a no-op.
+if [ -x scripts/install-landing-config.sh ]; then
+    scripts/install-landing-config.sh
+fi
+
 echo "Hooks installed (core.hooksPath -> .githooks; session notes survive amend/rebase)."
